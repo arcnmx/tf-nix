@@ -1,0 +1,3 @@
+[submodule "terranix"]
+	path = terranix
+	url = https://github.com/mrVanDalo/terranix.git
