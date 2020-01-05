@@ -24,3 +24,4 @@ nix run tf.apply.server --arg config ./example/example.nix
 - [terranix](https://github.com/mrVanDalo/terranix)
 - [terraform-nixos](https://github.com/tweag/terraform-nixos)
 - [NixOps](https://nixos.org/nixops/)
+- [NixOSes](https://github.com/Infinisil/nixoses)

@@ -1,0 +1,601 @@
+{ pkgs, config, lib, ... }: with lib; let
+  # TODO: filter out all empty/unnecessary/default keys and objects
+  pathType = types.str; # types.path except that ${} expressions work too (and also sometimes relative paths?)
+  resourceType = types.submodule ({ config, name, ... }: {
+    options = {
+      name = mkOption {
+        type = types.str;
+        default = name;
+      };
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+      };
+      dataSource = mkOption {
+        type = types.bool;
+        default = false;
+      };
+      provider = mkOption {
+        type = types.str;
+        example = "aws.alias";
+      };
+      type = mkOption {
+        type = types.str;
+        example = "instance";
+      };
+      inputs = mkOption {
+        type = types.attrsOf types.unspecified;
+        example = {
+          instance_type = "t2.micro";
+        };
+        description = ''
+          The "default" alias will be used as a fallback if no alias is provided.
+        '';
+      };
+      dependencies = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+      };
+      count = mkOption {
+        type = types.int;
+        default = 1;
+      };
+      # TODO: for_each
+      connection = mkOption {
+        type = types.nullOr connectionType;
+        default = null;
+      };
+      provisioners = mkOption {
+        type = types.listOf provisionerType;
+        default = [ ];
+      };
+      timeouts = mkOption {
+        type = timeoutsType;
+        default = { };
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      out = {
+        providerType = mkOption {
+          type = types.str;
+          internal = true;
+        };
+        resourceKey = mkOption {
+          type = types.str;
+          internal = true;
+        };
+        dataType = mkOption {
+          type = types.str;
+          internal = true;
+        };
+        reference = mkOption {
+          type = types.str;
+          internal = true;
+        };
+      };
+    };
+
+    config = {
+      out = {
+        providerType = head (splitString "." config.provider);
+        resourceKey = "${config.out.providerType}_${config.type}";
+        dataType = if config.dataSource then "data" else "resource";
+        reference = optionalString config.dataSource "data." + config.out.resourceKey + ".${config.name}";
+      };
+      hcl = config.inputs // optionalAttrs (config.count != 1) {
+        inherit (config) count;
+      } // optionalAttrs (config.provisioners != [ ]) {
+        provisioners = map (p: p.hcl) config.provisioners;
+      } // optionalAttrs (config.connection != null) {
+        connection = config.connection.hcl;
+      } // optionalAttrs (config.timeouts.hcl != { }) {
+        timeouts = config.timeouts.hcl;
+      } // optionalAttrs (config.provider != config.out.providerType) {
+        inherit (config) provider;
+      };
+    };
+  });
+  provisionerType = types.submodule ({ config, ... }: {
+    options = {
+      type = mkOption {
+        type = types.str;
+        example = "local-exec";
+      };
+      when = mkOption {
+        type = types.enum [ "create" "destroy" ];
+        default = "create";
+      };
+      onFailure = mkOption {
+        type = types.enum [ "continue" "fail" ];
+        default = "fail";
+      };
+      inputs = mkOption {
+        type = types.attrsOf types.unspecified;
+        example = {
+          command = "echo The server's IP address is \${self.private_ip}";
+        };
+      };
+
+      # built-in provisioners
+      local-exec = mkOption {
+        type = types.nullOr (types.submodule ({ config, ... }: {
+          options = {
+            command = mkOption {
+              type = types.lines;
+            };
+            hcl = mkOption {
+              type = types.attrsOf types.unspecified;
+              readOnly = true;
+            };
+          };
+
+          config.hcl = {
+            inherit (config) command;
+          };
+        }));
+      };
+      remote-exec = mkOption {
+        type = types.nullOr (types.submodule ({ config, ... }: {
+          options = {
+            inline = mkOption {
+              type = types.nullOr types.lines;
+              default = null;
+            };
+            scripts = mkOption {
+              type = types.listOf pathType;
+              default = [ ];
+            };
+            command = mkOption {
+              type = types.lines;
+              default = "";
+              description = "Alias for inline";
+            };
+            hcl = mkOption {
+              type = types.attrsOf types.unspecified;
+              readOnly = true;
+            };
+          };
+
+          config = {
+            inline = mkIf (config.command != "") [ config.command ];
+
+            hcl = assert config.inline != null || config.scripts != [ ];
+              optionalAttrs (config.inline != null) {
+                inherit (config) inline;
+              } // optionalAttrs (length config.scripts == 1) {
+                script = head config.scripts;
+              } // optionalAttrs (length config.scripts > 1) {
+                inherit (config) scripts;
+              };
+          };
+        }));
+      };
+      file = mkOption {
+        type = types.nullOr (types.submodule ({ config, ... }: {
+          options = {
+            destination = mkOption {
+              type = pathType;
+            };
+            source = mkOption {
+              type = types.nullOr pathType;
+              default = null;
+            };
+            content = mkOption {
+              type = types.nullOr types.str;
+              default = null;
+            };
+          };
+          config = assert config.source != null || config.content != null; {
+            inherit (config) destination;
+          } // optionalAttrs (config.source != null) {
+            inherit (config) source;
+          } // optionalAttrs (length config.content != null) {
+            inherit (config) content;
+          };
+        }));
+      };
+      # TODO: chef, habitat, puppet, salt-masterless (https://www.terraform.io/docs/provisioners/)
+    };
+
+    config = let
+      attrs' = filterAttrs (_: v: v != null) {
+        inherit (config) local-exec remote-exec file;
+      };
+      attrs = mapAttrsToList nameValuePair attrs';
+      attr = head attrs;
+    in assert length attrs <= 1; mkIf (attrs != [ ]) {
+      type = attr.name;
+      inherit (attr.value) inputs;
+    };
+  });
+  connectionType = types.submodule ({ config, ... }: {
+    options = {
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      type = mkOption {
+        type = types.enum [ "ssh" "winrm" ];
+        default = "ssh";
+      };
+      user = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      timeout = mkOption {
+        type = types.nullOr timeoutType;
+        default = null;
+      };
+      scriptPath = mkOption {
+        type = types.nullOr pathType;
+        default = null;
+      };
+      host = mkOption {
+        type = types.str;
+      };
+      # ssh options
+      ssh = {
+        privateKey = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
+        hostKey = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
+        certificate = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
+        agent = {
+          enabled = mkOption {
+            type = types.bool;
+            default = true;
+          };
+          identity = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+        };
+        bastion = {
+          host = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+          hostKey = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+          port = mkOption {
+            type = types.nullOr types.port;
+            default = null;
+          };
+          user = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+          password = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+          privateKey = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+          certificate = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+          };
+        };
+      };
+      winrm = {
+        https = mkOption {
+          type = types.bool;
+          default = false;
+        };
+        insecure = mkOption {
+          type = types.bool;
+          default = false;
+        };
+        useNtlm = mkOption {
+          type = types.bool;
+          default = false;
+        };
+        cacert = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
+      };
+    };
+
+    config.hcl = filterAttrs (_: v: v != null) {
+      inherit (config) type user timeout host;
+      script_path = config.scriptPath;
+      private_key = config.ssh.privateKey;
+      host_key = config.ssh.hostKey;
+      inherit (config.ssh) certificate;
+      agent = config.ssh.agent.enabled;
+      agent_identity = config.ssh.agent.identity;
+
+      bastion_host = config.ssh.bastion.host;
+      bastion_host_key = config.ssh.bastion.hostKey;
+      bastion_port = config.ssh.bastion.port;
+      bastion_user = config.ssh.bastion.user;
+      bastion_password = config.ssh.bastion.password;
+      bastion_private_key = config.ssh.bastion.privateKey;
+      bastion_certificate = config.ssh.bastion.certificate;
+
+      inherit (config.winrm) https insecure cacert;
+      use_ntlm = config.winrm.useNtlm;
+    };
+  });
+  providerType = types.submodule ({ name, config, ... }: {
+    options = {
+      type = mkOption {
+        type = types.str;
+      };
+      alias = mkOption {
+        type = types.nullOr types.str;
+        default = if name == "default" || name == config.type then null else name;
+      };
+      inputs = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      out = {
+        reference = mkOption {
+          type = types.str;
+          readOnly = true;
+        };
+      };
+    };
+
+    config = {
+      hcl = config.inputs // optionalAttrs (config.alias != null) {
+        inherit (config) alias;
+      };
+      out.reference = "provider.${config.name}";
+    };
+  });
+  variableType = types.submodule ({ name, config, ... }: {
+    options = {
+      type = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      default = mkOption {
+        type = types.nullOr types.unspecified;
+        default = null;
+      };
+      name = mkOption {
+        type = types.str;
+        default = name;
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      out = {
+        reference = mkOption {
+          type = types.str;
+          readOnly = true;
+        };
+      };
+    };
+
+    config = {
+      hcl = filterAttrs (v: v != null) {
+        inherit (config) type default;
+      };
+      out.reference = "var.${config.name}";
+    };
+  });
+  outputType = types.submodule ({ name, config, ... }: {
+    options = {
+      type = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      description = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      sensitive = mkOption {
+        type = types.bool;
+        default = false;
+      };
+      dependsOn = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+      };
+      value = mkOption {
+        type = types.str;
+      };
+      name = mkOption {
+        type = types.str;
+        default = name;
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      out = {
+        reference = mkOption {
+          type = types.str;
+          readOnly = true;
+        };
+      };
+    };
+
+    config.hcl = {
+      inherit (config) value;
+    } // filterAttrs (v: v != null) {
+      inherit (config) type description;
+    } // optionalAttrs config.sensitive {
+      sensitive = true;
+    } // optionalAttrs (config.dependsOn != [ ]) {
+      depends_on = config.dependsOn;
+    };
+    config.out.reference = "output.${config.name}";
+  });
+  moduleType = types.submodule ({ name, config, ... }: {
+    options = {
+      name = mkOption {
+        type = types.str;
+        default = name;
+      };
+      source = mkOption {
+        type = types.str;
+      };
+      version = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      providers = mkOption {
+        type = types.attrsOf types.str;
+        default = { };
+      };
+      inputs = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
+      };
+      # TODO: count, for_each, lifecycle
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      out = {
+        reference = mkOption {
+          type = types.str;
+          readOnly = true;
+        };
+      };
+    };
+
+    config.hcl = filterAttrs (v: v != null) {
+      inherit (config) source version;
+    } // optionalAttrs (config.providers != { }) {
+      inherit (config) providers;
+    } // config.inputs;
+    config.out.reference = "module.${config.name}";
+  });
+  timeoutType = types.str; # TODO: validate "2h" "60m" "10s" etc
+  timeoutsType = types.submodule ({ config, ... }: {
+    # NOTE: only a limited subset of resource types support this? why not just put it in inputs?
+    options = {
+      create = mkOption {
+        type = types.nullOr timeoutType;
+        default = null;
+      };
+      delete = mkOption {
+        type = types.nullOr timeoutType;
+        default = null;
+      };
+      update = mkOption {
+        type = types.nullOr timeoutType;
+        default = null;
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+    };
+
+    config.hcl = filterAttrs (_: v: v != null) {
+      inherit (config) create delete update;
+    };
+  });
+in {
+  options = {
+    resources = mkOption {
+      type = types.attrsOf resourceType;
+      default = { };
+    };
+    providers = mkOption {
+      type = types.attrsOf providerType;
+      default = { };
+    };
+    variables = mkOption {
+      type = types.attrsOf variableType;
+      default = { };
+    };
+    outputs = mkOption {
+      type = types.attrsOf outputType;
+      default = { };
+    };
+    modules = mkOption {
+      type = types.attrsOf moduleType;
+      default = { };
+    };
+
+    terraform = {
+      version = mkOption {
+        type = types.enum [ "0.11" "0.12" ];
+        default = "0.12";
+      };
+      googleBeta = mkOption {
+        type = types.bool;
+        default = false;
+      };
+      package = mkOption {
+        type = types.package;
+        readOnly = true;
+      };
+      wrapper = mkOption {
+        type = types.unspecified;
+        default = terraform: pkgs.callPackage ./wrapper.nix { inherit terraform; };
+      };
+    };
+
+    hcl = mkOption {
+      type = types.attrsOf types.unspecified;
+      readOnly = true;
+    };
+
+    lib = mkOption {
+      type = types.attrsOf (types.attrsOf types.unspecified);
+      default = { };
+    };
+  };
+
+  config = {
+    terraform.package = {
+      terraform = let
+        tf = {
+          "0.11" = pkgs.terraform_0_11;
+          "0.12" = pkgs.terraform_0_12;
+        }.${config.terraform.version};
+        translateProvider = provider: (optionalAttrs config.terraform.googleBeta {
+          google = "google-beta";
+        }).${provider} or provider;
+        mapProvider = p: provider: p.${translateProvider provider};
+        terraform = tf.withPlugins (p: map (mapProvider p) providers);
+      in config.terraform.wrapper terraform;
+    };
+    hcl = {
+      resource = let
+        resources' = filter (r: !r.dataSource && r.enable) (attrValues config.resources);
+        resources = groupBy (r: r.out.resourceKey) resources';
+      in mkIf (resources != { }) (mapAttrs (_: r: listToAttrs (map (r: nameValuePair r.name r.hcl) r)) resources);
+      data = let
+        resources' = filter (r: r.dataSource && r.enable) (attrValues config.resources);
+        resources = groupBy (r: v.out.resourceKey) resources';
+      in mkIf (resources != { }) (mapAttrs (_: r: listToAttrs (map (r: nameValuePair r.name r.hcl) r)) resources);
+      provider = let
+        providers' = attrValues config.providers;
+        providers = filter (p: p.hcl != { }) providers';
+      in mkIf (providers != [ ]) (map (p: { ${p.type} = p.hcl; }) providers);
+      output = mkIf (config.outputs != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.outputs);
+      variables = mkIf (config.variables != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.variables);
+    };
+    lib.tf = import ./lib.nix {
+      inherit pkgs config lib;
+    };
+  };
+}
