@@ -42,8 +42,14 @@
     };
   };*/
   config' = config;
+  meta = { ... }: {
+    config._module.args = {
+      inherit pkgs;
+    };
+  };
   evalTerraform = config: (evalModules {
     modules = [
+      meta
       config
       ./modules/terraform.nix
       ./modules/deps.nix

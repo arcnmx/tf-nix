@@ -1,106 +1,135 @@
 { config, lib, pkgs, ... }: with lib; let
-  inherit (config.nixos.lib.terranix) terraformProvider terraformReference terraformOutput terraformExpr terraformInput terraformConnectionDetails terraformNixStoreUrl;
+  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformInput terraformConnectionDetails terraformNixStoreUrl;
+  inherit (config) outputs;
 in {
   config = {
     terraform = {
-      resource.tls_private_key.access = {
-        algorithm = "ECDSA";
-        ecdsa_curve = "P384";
-      };
-
-      resource.local_file.access_key = {
-        sensitive_content = terraformOutput "resource.tls_private_key.access" "private_key_pem";
-        filename = "${terraformExpr "path.cwd"}/access.private.pem";
-        file_permission = "0500";
-      };
-
-      resource.digitalocean_ssh_key.access = {
-        provider = terraformProvider "digitalocean" "default";
-        name = "terraform/${config.nixos.networking.hostName} access key";
-        public_key = terraformOutput "resource.tls_private_key.access" "public_key_openssh";
-      };
-
-      data.digitalocean_image.nixos_unstable = {
-        provider = terraformProvider "digitalocean" "default";
-        name = "nixos-unstable-2019-12-31-b38c2839917";
-      };
-
-      variable.do_token = { };
-      # "default" provider is a special-cased string
-      provider.digitalocean.default = {
-        token = terraformInput "do_token";
-      };
-      resource.digitalocean_droplet.server = {
-        # unnecessary if using "default" provider
-        provider = terraformProvider "digitalocean" "default";
-        image = terraformOutput "data.digitalocean_image.nixos_unstable" "id";
-        name = "server";
-        region = "tor1";
-        size = "s-1vcpu-2gb";
-        ssh_keys = singleton (terraformOutput "resource.digitalocean_ssh_key.access" "id");
-      };
-
-      resource.digitalocean_domain.default = {
-        provider = terraformProvider "digitalocean" "default";
-        name = "example.com";
-      };
-
-      resource.digitalocean_record.www = {
-        provider = terraformProvider "digitalocean" "default";
-        domain = terraformOutput "resource.digitalocean_domain.default" "name";
-        type = "A";
-        name = "www";
-        # intra-terraform reference
-        value = terraformOutput "resource.digitalocean_droplet.server" "ipv4_address";
-      };
-
-      resource.null_resource.server_nix_copy = let
-        url = terraformNixStoreUrl {
-          resource = "resource.digitalocean_droplet.server";
-          private_key_file = terraformOutput "resource.local_file.access_key" "filename";
-        };
-      in {
-        # intra-terraform reference
-        connection = terraformConnectionDetails {
-          resource = "resource.digitalocean_droplet.server";
-          private_key = terraformOutput "resource.tls_private_key.access" "private_key_pem";
-        };
-        triggers = {
-          # TODO: pull in all command strings automatically!
-          remote = url;
-          system = config.nixos.system.build.toplevel;
+      resources = with config.terraform.resources; {
+        access_key = {
+          provider = "tls";
+          type = "private_key";
+          inputs = {
+            algorithm = "ECDSA";
+            ecdsa_curve = "P384";
+          };
         };
 
-        # nix -> terraform reference
-        provisioner = [ {
-          local-exec.command = "nix copy --substitute --to ${url} ${config.nixos.system.build.toplevel}";
-        } {
-          remote-exec.inline = [
-            "nix-env -p /nix/var/nix/profiles/system --set ${config.nixos.system.build.toplevel}"
-            "${config.nixos.system.build.toplevel}/bin/switch-to-configuration switch"
-          ];
-        } ];
-      };
-    };
+        access_file = {
+          # shorthand to avoid specifying the provider:
+          #type = "local.file";
+          provider = "local";
+          type = "file";
+          inputs = {
+            sensitive_content = access_key.referenceAttr "private_key_pem";
+            filename = "${terraformExpr "path.cwd"}/access.private.pem";
+            file_permission = "0500";
+          };
+        };
 
-    terranix = {
-      #gcroots = [ "provider.digitalocean" ]; # TODO: determine these automatically
+        do_access = {
+          provider = "digitalocean";
+          type = "ssh_key";
+          inputs = {
+            name = "terraform/${config.nixos.networking.hostName} access key";
+            public_key = access_key.referenceAttr "public_key_openssh";
+          };
+        };
+
+        nixos_unstable = {
+          provider = "digitalocean";
+          type = "image";
+          dataSource = true;
+          inputs.name = "nixos-unstable-2019-12-31-b38c2839917";
+        };
+
+        server = {
+          provider = "digitalocean";
+          type = "droplet";
+          inputs = {
+            image = nixos_unstable.referenceAttr "id";
+            name = "server";
+            region = "tor1";
+            size = "s-1vcpu-2gb";
+            ssh_keys = singleton (do_access.referenceAttr "id");
+          };
+          connection = terraformConnectionDetails {
+            host = server.referenceAttr "ipv4_address";
+            privateKey = access_key.referenceAttr "private_key_pem";
+            privateKeyFile = access_file.referenceAttr "filename";
+          };
+        };
+
+        example = {
+          provider = "digitalocean";
+          type = "domain";
+          inputs.name = "example.com";
+        };
+
+        www = {
+          provider = "digitalocean";
+          type = "record";
+          inputs = {
+            type = "A";
+            name = "www";
+            # intra-terraform reference
+            domain = example.referenceAttr "name";
+            value = server.referenceAttr "ipv4_address";
+          };
+        };
+
+        server_nix_copy = {
+          provider = "null";
+          type = "resource";
+          # intra-terraform reference
+          connection = server.connection;
+          inputs.triggers = {
+            # TODO: pull in all command strings automatically!
+            remote = url;
+            system = config.nixos.system.build.toplevel;
+          };
+
+          # nix -> terraform reference
+          provisioners = [ {
+            local-exec.command = "nix copy --substitute --to ${server.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
+          } {
+            remote-exec.inline = [
+              "nix-env -p /nix/var/nix/profiles/system --set ${config.nixos.system.build.toplevel}"
+              "${config.nixos.system.build.toplevel}/bin/switch-to-configuration switch"
+            ];
+          } ];
+        };
+      };
+
+      variables.do_token = {
+        type = "string";
+      };
+
+      providers.digitalocean = {
+        inputs.token = config.terraform.variables.do_token.ref;
+      };
+
+      outputs = with config.terraform.resources; {
+        do_key.value = access.referenceAttr "public_key_openssh";
+        motd.value = server.referenceAttr "ipv4_address";
+      };
+
       targets = {
         server = [
-          "resource.null_resource.server_nix_copy"
+          "server_nix_copy"
         ];
       };
     };
 
-    nixos = { ... }: {
-      #imports = [
-      #  <nixpkgs/nixos/modules/virtualisation/digital-ocean-config.nix> # TODO: ugh
-      #];
-      boot.isContainer = true;
+    nixos = { modulesPath, ... }: {
+      imports = [
+        # TODO: ugh needs https://github.com/NixOS/nixpkgs/pull/75031
+        (modulesPath + "/virtualisation/digital-ocean-config.nix")
+      ];
+      #boot.isContainer = true;
 
-      users.users.root.openssh.authorizedKeys.keys = singleton (terraformReference "resource.digitalocean_ssh_key.access" "public_key_openssh");
-      # terraform -> nix reference
-      users.motd = "welcome to ${terraformReference "resource.digitalocean_droplet.server" "ipv4_address"}";
+      # terraform -> nix references
+      users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.ref;
+      users.motd = "welcome to ${outputs.motd.ref}";
       #services.nginx = {
       #  # terraform -> nix reference
       #  bindIp = terraformOutput "resource.something_server.server" "ip";

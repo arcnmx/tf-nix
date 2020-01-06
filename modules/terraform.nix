@@ -1,5 +1,9 @@
 { pkgs, config, lib, ... }: with lib; let
+  tconfig = config;
   # TODO: filter out all empty/unnecessary/default keys and objects
+  tf = import ./lib.nix {
+    inherit pkgs config lib;
+  };
   pathType = types.str; # types.path except that ${} expressions work too (and also sometimes relative paths?)
   resourceType = types.submodule ({ config, name, ... }: {
     options = {
@@ -18,6 +22,7 @@
       provider = mkOption {
         type = types.str;
         example = "aws.alias";
+        # TODO: support just "alias" since "config.providers" is an attrset so they must be unique anyway?
       };
       type = mkOption {
         type = types.str;
@@ -62,6 +67,10 @@
           type = types.str;
           internal = true;
         };
+        provider = mkOption {
+          type = types.unspecified;
+          internal = true;
+        };
         resourceKey = mkOption {
           type = types.str;
           internal = true;
@@ -75,15 +84,26 @@
           internal = true;
         };
       };
+      referenceAttr = mkOption {
+        type = types.unspecified;
+        internal = true;
+      };
     };
 
     config = {
       out = {
         providerType = head (splitString "." config.provider);
+        provider = let
+          default = if config.provider != config.out.providerType
+            then throw "provider ${config.provider} not found"
+            else null;
+        in findFirst (p: p.out.reference == config.provider) default (attrValues tconfig.providers);
         resourceKey = "${config.out.providerType}_${config.type}";
         dataType = if config.dataSource then "data" else "resource";
         reference = optionalString config.dataSource "data." + config.out.resourceKey + ".${config.name}";
       };
+      referenceAttr = attr: tf.terraformContext config.out.reference attr
+        + tf.terraformExpr "${config.out.reference}${optionalString (attr != null) ".${attr}"}";
       hcl = config.inputs // optionalAttrs (config.count != 1) {
         inherit (config) count;
       } // optionalAttrs (config.provisioners != [ ]) {
@@ -92,8 +112,8 @@
         connection = config.connection.hcl;
       } // optionalAttrs (config.timeouts.hcl != { }) {
         timeouts = config.timeouts.hcl;
-      } // optionalAttrs (config.provider != config.out.providerType) {
-        inherit (config) provider;
+      } // optionalAttrs (config.out.provider != null) {
+        provider = tf.terraformContext config.out.provider.out.reference null + config.provider;
       };
     };
   });
@@ -335,10 +355,11 @@
     options = {
       type = mkOption {
         type = types.str;
+        default = name;
       };
       alias = mkOption {
         type = types.nullOr types.str;
-        default = if name == "default" || name == config.type then null else name;
+        default = if name == config.type then null else name;
       };
       inputs = mkOption {
         type = types.attrsOf types.unspecified;
@@ -360,7 +381,7 @@
       hcl = config.inputs // optionalAttrs (config.alias != null) {
         inherit (config) alias;
       };
-      out.reference = "provider.${config.name}";
+      out.reference = "${config.type}${optionalString (config.alias != null) ".${config.alias}"}";
     };
   });
   variableType = types.submodule ({ name, config, ... }: {
@@ -387,6 +408,10 @@
           readOnly = true;
         };
       };
+      ref = mkOption {
+        type = types.str;
+        readOnly = true;
+      };
     };
 
     config = {
@@ -394,6 +419,8 @@
         inherit (config) type default;
       };
       out.reference = "var.${config.name}";
+      ref = tf.terraformContext config.out.reference null
+        + tf.terraformExpr "${config.out.reference}";
     };
   });
   outputType = types.submodule ({ name, config, ... }: {
@@ -594,8 +621,8 @@ in {
       output = mkIf (config.outputs != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.outputs);
       variables = mkIf (config.variables != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.variables);
     };
-    lib.tf = import ./lib.nix {
-      inherit pkgs config lib;
+    lib = {
+      inherit tf;
     };
   };
 }
