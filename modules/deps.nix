@@ -1,4 +1,4 @@
-{ pkgs, lib, config, ... }: with config.lib.tf; with builtins; with lib; let
+{ pkgs, lib, config, ... }: with config.terraformConfig.lib.tf; with builtins; with lib; let
   dagEntryType = types.attrs;
   dagType = types.submodule ({ config, ... }: {
     options = {
@@ -28,11 +28,10 @@
   # Sort a mixture of terraform resources and nix derivations by their interdependencies
   dagsFor' = paths: foldl (a: b: a // dagFor b) {} paths;
   dagFor = entry': let
-    hclForKey = key: (findFirst (v: v.out.reference == key) null (mapAttrsToList (_: v: v) config.resources)).hcl;
     entry = dagFromString entry';
-    hcl = hclForKey entry.key;
-    json = toJSON hcl;
-    references = if entry.type == "tf" then mapAttrsToList (k: _: (dagFromString k).key) (getContext json) else terraformReferencesForDrv entry.key;
+    target = fromHclPath entry.key;
+    json = toJSON target.hcl;
+    references = if entry.type == "tf" then mapAttrsToList (k: _: (dagFromString k).key) (getContext json) else terraformContextForDrv entry.key;
     #attrs = attrByPath (splitString "." "terraform.${path}") null config;
   in {
     ${entry.key} = dagEntryAfter references ({
@@ -136,26 +135,56 @@
   in shell) tfFor;*/
 in {
   options = {
-    dag = {
-      targets = mkOption {
-        type = types.listOf dagType;
-        default = mapAttrsToList (_: r: dagFromString r.out.reference) config.resources;
-      };
-      entries = mkOption {
-        type = types.attrsOf dagEntryType;
-        default = [ ];
-      };
-      sorted = mkOption {
-        type = types.listOf dagType;
-        readOnly = true;
-      };
+    terraformConfig = mkOption {
+      type = types.unspecified;
+      internal = true;
+    };
+
+    select = mkOption {
+      type = types.listOf dagType;
+      default = mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.terraformConfig.resources;
+    };
+    entries = mkOption {
+      type = types.attrsOf dagEntryType;
+      default = [ ];
+    };
+    sorted = mkOption {
+      type = types.listOf dagType;
+      readOnly = true;
+    };
+    hcl = mkOption {
+      type = types.attrs;
+      readOnly = true;
+    };
+    isComplete = mkOption {
+      type = types.bool;
+      readOnly = true;
+    };
+    targets = mkOption {
+      type = types.listOf types.str;
+      readOnly = true;
     };
   };
 
-  config = {
-    dag = {
-      entries = dagsFor (dagsFor' (map (t: t.key) config.dag.targets));
-      sorted = map ({ data, name }: data.entry) (dagTopoSort config.dag.entries).result;
-    };
+  config = let
+    tfs' = foldr (e: sum: if e.type == "tf" then sum ++ [ e ] else []) [] config.sorted;
+    tfs = if tfs' == [] then filter (e: e.type == "tf") config.sorted else tfs';
+    incomplete = (partition (e: e.type != "tf" || any (i: i.key == v.key) tfs) e).wrong;
+
+    isComplete = incomplete == [ ];
+    hcl = foldl recursiveUpdate { } (map (e: let
+      r = fromHclPath e.key;
+    in attrsFromPath r.out.hclPath r.hcl) config.sorted);
+    targets = map (r: r.out.reference) tfs;
+    /*
+    #toJson = { name, value }: foldr (key: attrs: { ${key} = attrs; }) value (splitString "." name);
+    incomplete' = builtins.toJSON (foldl recursiveUpdate {} (map toJson incomplete));
+    targets = filter (name: hasPrefix "resource." name) (map (v: v.name) tfs);
+    allTargets = filter (name: hasPrefix "resource." name) (map (v: v.name) v);
+    out = builtins.toJSON (foldl recursiveUpdate {} (map toJson tfs));*/
+  in {
+    entries = dagsFor (dagsFor' (map (t: t.key) config.select));
+    sorted = map ({ data, name }: data.entry) (dagTopoSort config.entries).result;
+    inherit hcl isComplete targets;
   };
 }

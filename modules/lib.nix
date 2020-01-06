@@ -49,6 +49,23 @@
     key = head matches;
   };
 
+  # ugh
+  fromHclPath = p: let
+    path = if isString p then splitString "." p else p;
+    name = last path;
+    type = {
+      resource = "resources";
+      data = "resources";
+      provider = "providers";
+      output = "providers";
+      var = "variables";
+    }.${head path};
+    cfg = config.${type};
+    named = cfg.${name};
+    nameOf = r: r.name or r.alias;
+    find = findFirst (r: nameOf r == name) (throw "${toString p} not found") (attrValues cfg);
+  in if cfg ? ${name} && nameOf named == name then named else find;
+
   # strip a string of all marker references
   removeTerraformContext = str: let
     context = filterAttrs (k: value: tfMatch k == null) (getContext str);
@@ -68,13 +85,17 @@
   setContext = context: str: let
     str' = builtins.unsafeDiscardStringContext str;
   in foldl (str: cx: addContextFrom "${import cx}" str) str' (attrNames context); # TODO: preserve context outputs
+
+  # attrsFromPath [ "a" "b" "c" ] x = { a.b.c = x }
+  attrsFromPath = path: value: foldr (key: attrs: { ${key} = attrs; }) value path;
 in rec {
   inherit readDrv inputDrvs;
-  inherit setContext;
+  inherit setContext attrsFromPath;
 
   inherit readState;
 
   inherit terraformContext terraformContextFor terraformContextForString terraformContextForDrv terraformContextFromDrv removeTerraformContext;
+  inherit fromHclPath;
 
   inherit terraformExpr;
 

@@ -1,6 +1,6 @@
-{ config, lib, pkgs, ... }: with lib; let
-  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformInput terraformConnectionDetails terraformNixStoreUrl;
-  inherit (config) outputs;
+{ modulesPath, config, lib, pkgs, ... }: with lib; let
+  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformInput terraformNixStoreUrl;
+  inherit (config.terraform) outputs;
 in {
   config = {
     terraform = {
@@ -52,10 +52,12 @@ in {
             size = "s-1vcpu-2gb";
             ssh_keys = singleton (do_access.referenceAttr "id");
           };
-          connection = terraformConnectionDetails {
+          connection = {
             host = server.referenceAttr "ipv4_address";
-            privateKey = access_key.referenceAttr "private_key_pem";
-            privateKeyFile = access_file.referenceAttr "filename";
+            ssh = {
+              privateKey = access_key.referenceAttr "private_key_pem";
+              privateKeyFile = access_file.referenceAttr "filename";
+            };
           };
         };
 
@@ -81,10 +83,10 @@ in {
           provider = "null";
           type = "resource";
           # intra-terraform reference
-          connection = server.connection;
+          connection = server.connection.set;
           inputs.triggers = {
             # TODO: pull in all command strings automatically!
-            remote = url;
+            remote = server.connection.nixStoreUrl;
             system = config.nixos.system.build.toplevel;
           };
 
@@ -109,15 +111,16 @@ in {
       };
 
       outputs = with config.terraform.resources; {
-        do_key.value = access.referenceAttr "public_key_openssh";
+        do_key.value = access_key.referenceAttr "public_key_openssh";
         motd.value = server.referenceAttr "ipv4_address";
       };
 
-      targets = {
-        server = [
-          "server_nix_copy"
-        ];
-      };
+      # TODO
+      #targets = {
+      #  server = [
+      #    "server_nix_copy"
+      #  ];
+      #};
     };
 
     nixos = { modulesPath, ... }: {
@@ -125,15 +128,48 @@ in {
         # TODO: ugh needs https://github.com/NixOS/nixpkgs/pull/75031
         (modulesPath + "/virtualisation/digital-ocean-config.nix")
       ];
-      #boot.isContainer = true;
 
-      # terraform -> nix references
-      users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.ref;
-      users.motd = "welcome to ${outputs.motd.ref}";
-      #services.nginx = {
-      #  # terraform -> nix reference
-      #  bindIp = terraformOutput "resource.something_server.server" "ip";
-      #};
+      config = {
+        #boot.isContainer = true;
+
+        # terraform -> nix references
+        users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.ref;
+        users.motd = "welcome to ${outputs.motd.ref}";
+        #services.nginx = {
+        #  # terraform -> nix reference
+        #  bindIp = terraformOutput "resource.something_server.server" "ip";
+        #};
+        nixpkgs.system = pkgs.system;
+      };
+    };
+    dag.terraformConfig = config.terraform;
+  };
+
+  options = {
+    nixos = mkOption {
+      type = let
+        baseModules = import (modulesPath + "/module-list.nix");
+      in types.submoduleWith {
+        modules = baseModules;
+        specialArgs = {
+          inherit baseModules modulesPath;
+        };
+      };
+    };
+    terraform = mkOption {
+      type = types.submodule ({ ... }: {
+        imports = [
+          ../modules/terraform.nix
+        ];
+
+        config._module.args = {
+          inherit pkgs;
+        };
+      });
+    };
+    dag = mkOption {
+      type = types.submodule (import ../modules/deps.nix);
+      default = { };
     };
   };
 }

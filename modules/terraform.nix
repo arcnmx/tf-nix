@@ -83,6 +83,14 @@
           type = types.str;
           internal = true;
         };
+        hclPath = mkOption {
+          type = types.listOf types.str;
+          internal = true;
+        };
+        hclPathStr = mkOption {
+          type = types.str;
+          internal = true;
+        };
       };
       referenceAttr = mkOption {
         type = types.unspecified;
@@ -101,8 +109,10 @@
         resourceKey = "${config.out.providerType}_${config.type}";
         dataType = if config.dataSource then "data" else "resource";
         reference = optionalString config.dataSource "data." + config.out.resourceKey + ".${config.name}";
+        hclPath = [ config.out.dataType config.out.resourceKey config.name ];
+        hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      referenceAttr = attr: tf.terraformContext config.out.reference attr
+      referenceAttr = attr: tf.terraformContext config.out.hclPathStr attr
         + tf.terraformExpr "${config.out.reference}${optionalString (attr != null) ".${attr}"}";
       hcl = config.inputs // optionalAttrs (config.count != 1) {
         inherit (config) count;
@@ -113,7 +123,7 @@
       } // optionalAttrs (config.timeouts.hcl != { }) {
         timeouts = config.timeouts.hcl;
       } // optionalAttrs (config.out.provider != null) {
-        provider = tf.terraformContext config.out.provider.out.reference null + config.provider;
+        provider = tf.terraformContext config.out.provider.out.hclPathStr null + config.provider;
       };
     };
   });
@@ -137,6 +147,10 @@
           command = "echo The server's IP address is \${self.private_ip}";
         };
       };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
 
       # built-in provisioners
       local-exec = mkOption {
@@ -155,12 +169,13 @@
             inherit (config) command;
           };
         }));
+        default = null;
       };
       remote-exec = mkOption {
         type = types.nullOr (types.submodule ({ config, ... }: {
           options = {
             inline = mkOption {
-              type = types.nullOr types.lines;
+              type = types.nullOr (types.listOf types.str);
               default = null;
             };
             scripts = mkOption {
@@ -181,16 +196,16 @@
           config = {
             inline = mkIf (config.command != "") [ config.command ];
 
-            hcl = assert config.inline != null || config.scripts != [ ];
-              optionalAttrs (config.inline != null) {
-                inherit (config) inline;
-              } // optionalAttrs (length config.scripts == 1) {
-                script = head config.scripts;
-              } // optionalAttrs (length config.scripts > 1) {
-                inherit (config) scripts;
-              };
+            hcl = optionalAttrs (config.inline != null) {
+              inline = assert config.scripts == [ ]; config.inline;
+            } // optionalAttrs (length config.scripts == 1) {
+              script = assert config.inline == null; head config.scripts;
+            } // optionalAttrs (length config.scripts > 1) {
+              scripts = assert config.inline == null; config.scripts;
+            };
           };
         }));
+        default = null;
       };
       file = mkOption {
         type = types.nullOr (types.submodule ({ config, ... }: {
@@ -206,15 +221,22 @@
               type = types.nullOr types.str;
               default = null;
             };
+            hcl = mkOption {
+              type = types.attrsOf types.unspecified;
+              readOnly = true;
+            };
           };
-          config = assert config.source != null || config.content != null; {
-            inherit (config) destination;
-          } // optionalAttrs (config.source != null) {
-            inherit (config) source;
-          } // optionalAttrs (length config.content != null) {
-            inherit (config) content;
+          config = {
+            hcl = {
+              inherit (config) destination;
+            } // optionalAttrs (config.source != null) {
+              source = assert config.content == null; config.source;
+            } // optionalAttrs (length config.content != null) {
+              content = assert config.source == null; config.content;
+            };
           };
         }));
+        default = null;
       };
       # TODO: chef, habitat, puppet, salt-masterless (https://www.terraform.io/docs/provisioners/)
     };
@@ -225,15 +247,26 @@
       };
       attrs = mapAttrsToList nameValuePair attrs';
       attr = head attrs;
-    in assert length attrs <= 1; mkIf (attrs != [ ]) {
-      type = attr.name;
-      inherit (attr.value) inputs;
+    in {
+      type = assert length attrs <= 1; mkIf (attrs != [ ]) attr.name;
+      inputs = mkIf (attrs != [ ]) attr.value.hcl;
+      hcl = {
+        ${config.type} = optionalAttrs (config.when != "create") {
+          inherit (config) when;
+        } // optionalAttrs (config.onFailure != "fail") {
+          on_failure = config.onFailure;
+        } // config.inputs;
+      };
     };
   });
   connectionType = types.submodule ({ config, ... }: {
     options = {
       hcl = mkOption {
         type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+      nixStoreUrl = mkOption {
+        type = types.str;
         readOnly = true;
       };
       type = mkOption {
@@ -260,6 +293,11 @@
         privateKey = mkOption {
           type = types.nullOr types.str;
           default = null;
+        };
+        privateKeyFile = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          # NOTE: this is not directly used by hcl
         };
         hostKey = mkOption {
           type = types.nullOr types.str;
@@ -328,27 +366,41 @@
           default = null;
         };
       };
+      set = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
     };
 
-    config.hcl = filterAttrs (_: v: v != null) {
-      inherit (config) type user timeout host;
-      script_path = config.scriptPath;
-      private_key = config.ssh.privateKey;
-      host_key = config.ssh.hostKey;
-      inherit (config.ssh) certificate;
-      agent = config.ssh.agent.enabled;
-      agent_identity = config.ssh.agent.identity;
+    config = {
+      hcl = filterAttrs (_: v: v != null) {
+        inherit (config) type user timeout host;
+        script_path = config.scriptPath;
+        private_key = config.ssh.privateKey;
+        host_key = config.ssh.hostKey;
+        inherit (config.ssh) certificate;
+        agent = config.ssh.agent.enabled;
+        agent_identity = config.ssh.agent.identity;
 
-      bastion_host = config.ssh.bastion.host;
-      bastion_host_key = config.ssh.bastion.hostKey;
-      bastion_port = config.ssh.bastion.port;
-      bastion_user = config.ssh.bastion.user;
-      bastion_password = config.ssh.bastion.password;
-      bastion_private_key = config.ssh.bastion.privateKey;
-      bastion_certificate = config.ssh.bastion.certificate;
+        bastion_host = config.ssh.bastion.host;
+        bastion_host_key = config.ssh.bastion.hostKey;
+        bastion_port = config.ssh.bastion.port;
+        bastion_user = config.ssh.bastion.user;
+        bastion_password = config.ssh.bastion.password;
+        bastion_private_key = config.ssh.bastion.privateKey;
+        bastion_certificate = config.ssh.bastion.certificate;
 
-      inherit (config.winrm) https insecure cacert;
-      use_ntlm = config.winrm.useNtlm;
+        inherit (config.winrm) https insecure cacert;
+        use_ntlm = config.winrm.useNtlm;
+      };
+      set = filterAttrs (_: v: v != null) {
+        # TODO: rewrite "self" terraform references
+        inherit (config) ssh winrm type user timeout scriptPath host;
+      };
+      nixStoreUrl = let
+        user = if config.user == null then "root" else config.user;
+        sshKey = optionalString (config.ssh.privateKeyFile != null) "?ssh-key=${config.ssh.privateKeyFile}";
+      in "ssh://${user}@${config.host}${sshKey}";
     };
   });
   providerType = types.submodule ({ name, config, ... }: {
@@ -374,6 +426,14 @@
           type = types.str;
           readOnly = true;
         };
+        hclPath = mkOption {
+          type = types.listOf types.str;
+          internal = true;
+        };
+        hclPathStr = mkOption {
+          type = types.str;
+          internal = true;
+        };
       };
     };
 
@@ -381,7 +441,11 @@
       hcl = config.inputs // optionalAttrs (config.alias != null) {
         inherit (config) alias;
       };
-      out.reference = "${config.type}${optionalString (config.alias != null) ".${config.alias}"}";
+      out = {
+        reference = "${config.type}${optionalString (config.alias != null) ".${config.alias}"}";
+        hclPath = [ "provider" config.type ] ++ optional (config.alias != null) config.alias;
+        hclPathStr = concatStringsSep "." config.out.hclPath;
+      };
     };
   });
   variableType = types.submodule ({ name, config, ... }: {
@@ -407,6 +471,14 @@
           type = types.str;
           readOnly = true;
         };
+        hclPath = mkOption {
+          type = types.listOf types.str;
+          internal = true;
+        };
+        hclPathStr = mkOption {
+          type = types.str;
+          internal = true;
+        };
       };
       ref = mkOption {
         type = types.str;
@@ -415,12 +487,16 @@
     };
 
     config = {
-      hcl = filterAttrs (v: v != null) {
+      hcl = filterAttrs (_: v: v != null) {
         inherit (config) type default;
       };
-      out.reference = "var.${config.name}";
-      ref = tf.terraformContext config.out.reference null
-        + tf.terraformExpr "${config.out.reference}";
+      out = {
+        reference = "var.${config.name}";
+        hclPath = [ "variable" config.name ];
+        hclPathStr = concatStringsSep "." config.out.hclPath;
+      };
+      ref = tf.terraformContext config.out.hclPathStr null
+        + tf.terraformExpr config.out.reference;
     };
   });
   outputType = types.submodule ({ name, config, ... }: {
@@ -457,19 +533,37 @@
           type = types.str;
           readOnly = true;
         };
+        hclPath = mkOption {
+          type = types.listOf types.str;
+          internal = true;
+        };
+        hclPathStr = mkOption {
+          type = types.str;
+          internal = true;
+        };
+      };
+      ref = mkOption {
+        type = types.str;
       };
     };
 
-    config.hcl = {
-      inherit (config) value;
-    } // filterAttrs (v: v != null) {
-      inherit (config) type description;
-    } // optionalAttrs config.sensitive {
-      sensitive = true;
-    } // optionalAttrs (config.dependsOn != [ ]) {
-      depends_on = config.dependsOn;
+    config = {
+      hcl = {
+        inherit (config) value;
+      } // filterAttrs (_: v: v != null) {
+        inherit (config) type description;
+      } // optionalAttrs config.sensitive {
+        sensitive = true;
+      } // optionalAttrs (config.dependsOn != [ ]) {
+        depends_on = config.dependsOn;
+      };
+      out = {
+        reference = "output.${config.name}";
+        hclPath = [ "output" config.name ];
+        hclPathStr = concatStringsSep "." config.out.hclPath;
+      };
+      ref = mkDefault (tf.terraformContext config.out.hclPathStr null);
     };
-    config.out.reference = "output.${config.name}";
   });
   moduleType = types.submodule ({ name, config, ... }: {
     options = {
@@ -502,15 +596,29 @@
           type = types.str;
           readOnly = true;
         };
+        hclPath = mkOption {
+          type = types.listOf types.str;
+          internal = true;
+        };
+        hclPathStr = mkOption {
+          type = types.str;
+          internal = true;
+        };
       };
     };
 
-    config.hcl = filterAttrs (v: v != null) {
-      inherit (config) source version;
-    } // optionalAttrs (config.providers != { }) {
-      inherit (config) providers;
-    } // config.inputs;
-    config.out.reference = "module.${config.name}";
+    config = {
+      hcl = filterAttrs (_: v: v != null) {
+        inherit (config) source version;
+      } // optionalAttrs (config.providers != { }) {
+        inherit (config) providers;
+      } // config.inputs;
+      out = {
+        reference = "module.${config.name}";
+        hclPath = [ "module" config.name ];
+        hclPathStr = concatStringsSep "." config.out.hclPath;
+      };
+    };
   });
   timeoutType = types.str; # TODO: validate "2h" "60m" "10s" etc
   timeoutsType = types.submodule ({ config, ... }: {
@@ -612,7 +720,7 @@ in {
       in mkIf (resources != { }) (mapAttrs (_: r: listToAttrs (map (r: nameValuePair r.name r.hcl) r)) resources);
       data = let
         resources' = filter (r: r.dataSource && r.enable) (attrValues config.resources);
-        resources = groupBy (r: v.out.resourceKey) resources';
+        resources = groupBy (r: r.out.resourceKey) resources';
       in mkIf (resources != { }) (mapAttrs (_: r: listToAttrs (map (r: nameValuePair r.name r.hcl) r)) resources);
       provider = let
         providers' = attrValues config.providers;

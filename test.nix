@@ -47,14 +47,35 @@
       inherit pkgs;
     };
   };
+  deps = { config, ... }: {
+    options.dag = mkOption {
+      type = types.submodule (import ./modules/deps.nix);
+      default = { };
+    };
+    config.dag.terraformConfig = config;
+  };
+  depsType = { ... }: {
+    imports = [
+      ./modules/deps.nix
+    ];
+  };
   evalTerraform = config: (evalModules {
     modules = [
       meta
+      deps
       config
       ./modules/terraform.nix
-      ./modules/deps.nix
     ];
   }).config;
 in rec {
   config = evalTerraform config';
+  example = (evalModules {
+    modules = [
+      meta
+      ./example/example.nix
+    ];
+    specialArgs = {
+      modulesPath = pkgs.path + "/nixos/modules";
+    };
+  }).config;
 }
