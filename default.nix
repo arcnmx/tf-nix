@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix, terraformState ? null, terraformTargets ? [] }: with pkgs.lib; let
+{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix, terraformState ? false, terraformTargets ? [] }: with pkgs.lib; let
   inherit (import ./modules/run.nix { inherit pkgs; }) nixRunWrapper;
   terraformSecret = config: name: let
   in throw "ugh secret ${name}";
@@ -21,6 +21,16 @@
     ];
   }).config;
   configPath = config;
+  stateModule = { config, ... }: {
+    config.outputs = let
+      state = builtins.fromJSON (builtins.readFile config.paths.stateFile);
+      outputs = state.outputs;
+      #findOutput = key: findFirst (attr: config.outputs.${attr}.name == key) (attrNames config.outputs);
+      findOutput = key: key; # TODO: there's no requirement that ${x}.output.name == x, but infinite recursion...
+    in mapAttrs' (k: v: nameValuePair (findOutput k) {
+      ref = v.value;
+    }) outputs;
+  };
   configModule = { config, ... }: {
     options = {
       paths = {
@@ -41,7 +51,7 @@
         };
         stateFile = mkOption {
           type = types.path;
-          default = config.paths.dataDir + "/tf.tfstate";
+          default = config.paths.dataDir + "/state.tfstate";
         };
         tf = mkOption {
           type = types.path;
@@ -63,7 +73,9 @@
       pkgsModule
       tfModule
       configModule
-    ] ++ toList config;
+    ] ++ toList config
+    ++ optional terraformState stateModule;
+
     specialArgs = {
       inherit nixosModulesPath;
       pkgsPath = toString pkgs.path;
@@ -103,6 +115,8 @@
     script = ''
       set -eu
 
+      export TF_DATA_DIR="''${TF_DATA_DIR-${config.paths.terraformDataDir}}"
+      export TF_STATE_FILE="''${TF_STATE_FILE-${config.paths.stateFile}}"
       export TF_CONFIG_DIR="${dir}"
 
       exec ${config.terraform.package}/bin/terraform "$@"
@@ -119,13 +133,13 @@
     script = ''
       set -eux
 
-      export TF_DATA_DIR="''${TF_DATA_DIR-${config.paths.terraformDataDir}}"
-      export TF_STATE_FILE="''${TF_STATE_FILE-${config.paths.stateFile}}"
       export TF_TARGETS="${concatStringsSep " " targets}"
-
+    '' + optionalString (!terraformState) ''
+      ${package}/bin/terraform init
+    '' + ''
       ${package}/bin/terraform apply "$@"
     '' + optionalString (!deps.isComplete) ''
-      nix run -f ${toString config.paths.tf} run.apply --arg config ${toString config.paths.config} --arg terraformState $TF_STATE_FILE --argstr terraformTargets "${concatStringsSep "," targets}"
+      nix run --show-trace -f ${toString config.paths.tf} run.apply --arg config ${toString config.paths.config} --arg terraformState true --argstr terraformTargets "${concatStringsSep "," targets}"
     '';
   in pkgs.writeShellScriptBin "terraform" script;
   commonEnv = {

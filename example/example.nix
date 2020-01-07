@@ -20,7 +20,7 @@ in {
         type = "file";
         inputs = {
           sensitive_content = access_key.referenceAttr "private_key_pem";
-          filename = "${terraformExpr "path.cwd"}/access.private.pem";
+          filename = "${toString config.paths.dataDir}/access.private.pem";
           file_permission = "0500";
         };
       };

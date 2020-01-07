@@ -75,8 +75,19 @@
     in plist a.provider or [] ++ plist b.provider or [];
   };
 
-  scrubHclAll = hcl: fromJSON (unsafeDiscardStringContext (toJSON hcl));
-  scrubHcl = hcl: fromJSON (removeTerraformContext (toJSON hcl));
+  scrubHclAll = hcl: let
+    json = toJSON hcl;
+    json' = unsafeDiscardStringContext json;
+  in fromJSON json';
+  scrubHcl = hcl: let
+    json = removeTerraformContext (toJSON hcl);
+    context = getContext json;
+    json' = unsafeDiscardStringContext json;
+  #in setContext context (fromJSON json');
+  in mapAttrsRecursive (_: v:
+    # HACK: just apply context to any string we can find in the attrset
+    if isString v then setContext (context // getContext v) v else v
+  ) (fromJSON json');
 
   hclDir = {
     name ? "terraform"

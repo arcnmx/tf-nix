@@ -7,7 +7,7 @@
 
   if [[ -n ''${TF_CONFIG_DIR-} ]]; then
     case ''${1-} in
-      plan|apply|destroy|providers|graph|refresh)
+      init|plan|apply|destroy|providers|graph|refresh)
         set -- "$@" "$TF_CONFIG_DIR"
         ;;
     esac

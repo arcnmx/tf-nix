@@ -117,7 +117,7 @@
       hcl = config.inputs // optionalAttrs (config.count != 1) {
         inherit (config) count;
       } // optionalAttrs (config.provisioners != [ ]) {
-        provisioners = map (p: p.hcl) config.provisioners;
+        provisioner = map (p: p.hcl) config.provisioners;
       } // optionalAttrs (config.connection != null) {
         connection = config.connection.hcl;
       } // optionalAttrs (config.timeouts.hcl != { }) {
@@ -690,6 +690,9 @@ in {
         type = types.unspecified;
         default = terraform: pkgs.callPackage ./wrapper.nix { inherit terraform; };
       };
+      providers = mkOption {
+        type = types.listOf types.str;
+      };
     };
 
     hcl = mkOption {
@@ -714,8 +717,12 @@ in {
           google = "google-beta";
         }).${provider} or provider;
         mapProvider = p: provider: p.${translateProvider provider};
-        terraform = tf.withPlugins (ps: mapAttrsToList (_: p: mapProvider ps p.type) config.providers);
+        terraform = tf.withPlugins (ps: map (mapProvider ps) config.terraform.providers);
       in config.terraform.wrapper terraform;
+      providers = unique (
+        mapAttrsToList (_: p: p.type) config.providers
+        ++ mapAttrsToList (_: r: r.out.providerType) config.resources
+      );
     };
     hcl = {
       resource = let

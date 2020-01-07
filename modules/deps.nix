@@ -93,7 +93,7 @@ in {
       map (e: toHcl (fromHclPath e.key) scrubHcl) tfs
       ++ map (e: toHcl (fromHclPath e.key) scrubHclAll) incomplete
     );
-    filterTarget = e: e.out.dataType or null == "resource";
+    filterTarget = e: (fromHclPath e.key).out.dataType or null == "resource";
     targets = map (e: (fromHclPath e.key).out.reference) (filter filterTarget tfs);
   in {
     entries = dagsFor (dagsFor' (map (t: t.key) config.select));
