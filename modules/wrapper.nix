@@ -3,12 +3,17 @@
 # - TF_STATE_FILE: path to terraform state file (this *must not* be the same as $TF_DATA_DIR/terraform.tfstate)
 # - TF_TARGETS: space-separated list of targets to select (terraform recommends not using this option)
 { lib, writeShellScriptBin, terraform }: with lib; writeShellScriptBin "terraform" ''
+  set -eu
+
   if [[ -n ''${TF_CONFIG_DIR-} ]]; then
     case ''${1-} in
       plan|apply|destroy|providers|graph|refresh)
         set -- "$@" "$TF_CONFIG_DIR"
         ;;
     esac
+  fi
+  if [[ -n ''${TF_DATA_DIR-} ]]; then
+    mkdir -p "$TF_DATA_DIR"
   fi
   if [[ -n ''${TF_TARGETS-} ]]; then
     for target in $TF_TARGETS; do

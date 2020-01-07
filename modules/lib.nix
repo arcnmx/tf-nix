@@ -145,16 +145,4 @@ in rec {
   terraformModule = { config, ... }: {
     imports = [ ./terraform.nix ];
   };
-
-  /*commonEnv = {
-    TF_CLI_CONFIG_FILE = builtins.toFile "terraformrc" ''
-      disable_checkpoint = true
-    '';
-    TF_INPUT = 0;
-    TF_IN_AUTOMATION = 1;
-    #TF_LOG = "INFO";
-  };*/
-
-  #references = terraformReferences example.config.nixos.system.build.toplevel;
-  #references = inputDrvsRecursive [] [ example.config.nixos.system.build.toplevel.drvPath ];
 }

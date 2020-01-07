@@ -1,127 +1,125 @@
-{ modulesPath, config, lib, pkgs, ... }: with lib; let
-  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl nixRunWrapper hclDir;
-  inherit (config.terraform) outputs;
+{ config, lib, pkgs, ... }: with lib; let
+  inherit (config.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl nixRunWrapper hclDir;
+  inherit (config) outputs;
 in {
   config = {
-    terraform = {
-      resources = with config.terraform.resources; {
-        access_key = {
-          provider = "tls";
-          type = "private_key";
-          inputs = {
-            algorithm = "ECDSA";
-            ecdsa_curve = "P384";
+    resources = with config.resources; {
+      access_key = {
+        provider = "tls";
+        type = "private_key";
+        inputs = {
+          algorithm = "ECDSA";
+          ecdsa_curve = "P384";
+        };
+      };
+
+      access_file = {
+        # shorthand to avoid specifying the provider:
+        #type = "local.file";
+        provider = "local";
+        type = "file";
+        inputs = {
+          sensitive_content = access_key.referenceAttr "private_key_pem";
+          filename = "${terraformExpr "path.cwd"}/access.private.pem";
+          file_permission = "0500";
+        };
+      };
+
+      do_access = {
+        provider = "digitalocean";
+        type = "ssh_key";
+        inputs = {
+          name = "terraform/${config.nixos.networking.hostName} access key";
+          public_key = access_key.referenceAttr "public_key_openssh";
+        };
+      };
+
+      nixos_unstable = {
+        provider = "digitalocean";
+        type = "image";
+        dataSource = true;
+        inputs.name = "nixos-unstable-2019-12-31-b38c2839917";
+      };
+
+      server = {
+        provider = "digitalocean";
+        type = "droplet";
+        inputs = {
+          image = nixos_unstable.referenceAttr "id";
+          name = "server";
+          region = "tor1";
+          size = "s-1vcpu-2gb";
+          ssh_keys = singleton (do_access.referenceAttr "id");
+        };
+        connection = {
+          host = terraformSelf "ipv4_address";
+          ssh = {
+            privateKey = access_key.referenceAttr "private_key_pem";
+            privateKeyFile = access_file.referenceAttr "filename";
           };
         };
+      };
 
-        access_file = {
-          # shorthand to avoid specifying the provider:
-          #type = "local.file";
-          provider = "local";
-          type = "file";
-          inputs = {
-            sensitive_content = access_key.referenceAttr "private_key_pem";
-            filename = "${terraformExpr "path.cwd"}/access.private.pem";
-            file_permission = "0500";
-          };
-        };
+      example = {
+        provider = "digitalocean";
+        type = "domain";
+        inputs.name = "example.com";
+      };
 
-        do_access = {
-          provider = "digitalocean";
-          type = "ssh_key";
-          inputs = {
-            name = "terraform/${config.nixos.networking.hostName} access key";
-            public_key = access_key.referenceAttr "public_key_openssh";
-          };
-        };
-
-        nixos_unstable = {
-          provider = "digitalocean";
-          type = "image";
-          dataSource = true;
-          inputs.name = "nixos-unstable-2019-12-31-b38c2839917";
-        };
-
-        server = {
-          provider = "digitalocean";
-          type = "droplet";
-          inputs = {
-            image = nixos_unstable.referenceAttr "id";
-            name = "server";
-            region = "tor1";
-            size = "s-1vcpu-2gb";
-            ssh_keys = singleton (do_access.referenceAttr "id");
-          };
-          connection = {
-            host = terraformSelf "ipv4_address";
-            ssh = {
-              privateKey = access_key.referenceAttr "private_key_pem";
-              privateKeyFile = access_file.referenceAttr "filename";
-            };
-          };
-        };
-
-        example = {
-          provider = "digitalocean";
-          type = "domain";
-          inputs.name = "example.com";
-        };
-
-        www = {
-          provider = "digitalocean";
-          type = "record";
-          inputs = {
-            type = "A";
-            name = "www";
-            # intra-terraform reference
-            domain = example.referenceAttr "name";
-            value = server.referenceAttr "ipv4_address";
-          };
-        };
-
-        server_nix_copy = {
-          provider = "null";
-          type = "resource";
+      www = {
+        provider = "digitalocean";
+        type = "record";
+        inputs = {
+          type = "A";
+          name = "www";
           # intra-terraform reference
-          connection = server.connection.set;
-          inputs.triggers = {
-            # TODO: pull in all command strings automatically!
-            remote = server_nix_copy.connection.nixStoreUrl;
-            system = config.nixos.system.build.toplevel;
-          };
-
-          # nix -> terraform reference
-          provisioners = [ {
-            local-exec.command = "nix copy --substitute --to ${server_nix_copy.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
-          } {
-            remote-exec.inline = [
-              "nix-env -p /nix/var/nix/profiles/system --set ${config.nixos.system.build.toplevel}"
-              "${config.nixos.system.build.toplevel}/bin/switch-to-configuration switch"
-            ];
-          } ];
+          domain = example.referenceAttr "name";
+          value = server.referenceAttr "ipv4_address";
         };
       };
 
-      variables.do_token = {
-        type = "string";
-      };
+      server_nix_copy = {
+        provider = "null";
+        type = "resource";
+        # intra-terraform reference
+        connection = server.connection.set;
+        inputs.triggers = {
+          # TODO: pull in all command strings automatically!
+          remote = server_nix_copy.connection.nixStoreUrl;
+          system = config.nixos.system.build.toplevel;
+        };
 
-      providers.digitalocean = {
-        inputs.token = config.terraform.variables.do_token.ref;
+        # nix -> terraform reference
+        provisioners = [ {
+          local-exec.command = "nix copy --substitute --to ${server_nix_copy.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
+        } {
+          remote-exec.inline = [
+            "nix-env -p /nix/var/nix/profiles/system --set ${config.nixos.system.build.toplevel}"
+            "${config.nixos.system.build.toplevel}/bin/switch-to-configuration switch"
+          ];
+        } ];
       };
-
-      outputs = with config.terraform.resources; {
-        do_key.value = access_key.referenceAttr "public_key_openssh";
-        motd.value = server.referenceAttr "ipv4_address";
-      };
-
-      # TODO
-      #targets = {
-      #  server = [
-      #    "server_nix_copy"
-      #  ];
-      #};
     };
+
+    variables.do_token = {
+      type = "string";
+    };
+
+    providers.digitalocean = {
+      inputs.token = config.variables.do_token.ref;
+    };
+
+    outputs = with config.resources; {
+      do_key.value = access_key.referenceAttr "public_key_openssh";
+      motd.value = server.referenceAttr "ipv4_address";
+    };
+
+    # TODO
+    #targets = {
+    #  server = [
+    #    "server_nix_copy"
+    #  ];
+    #};
 
     nixos = { modulesPath, ... }: {
       imports = [
@@ -142,58 +140,11 @@ in {
         nixpkgs.system = pkgs.system;
       };
     };
-    dag.terraformConfig = config.terraform;
-
-    dir = hclDir {
-      inherit (config.dag) hcl;
-    };
-    apply = let
-      targets = optionals (!config.dag.isComplete) config.dag.targets;
-      script = ''
-        set -eu
-
-        export TF_TARGETS="${concatStringsSep " " targets}"
-        export TF_CONFIG_DIR=${config.dir}
-
-        ${config.terraform.terraform.package}/bin/terraform apply "$@"
-      '' + optionalString (!config.dag.isComplete) ''
-        nix run -f ${toString ../test.nix} example.apply --arg config ${toString ./example.nix} --arg terraformState $TF_STATE_FILE --argstr terraformTargets "${concatStringsSep "," targets}"
-      '';
-      terraform = pkgs.writeShellScriptBin "terraform" script;
-    in nixRunWrapper "terraform" terraform;
   };
 
   options = {
     nixos = mkOption {
-      type = let
-        baseModules = import (modulesPath + "/module-list.nix");
-      in types.submoduleWith {
-        modules = baseModules;
-        specialArgs = {
-          inherit baseModules modulesPath;
-        };
-      };
-    };
-    terraform = mkOption {
-      type = types.submodule ({ ... }: {
-        imports = [
-          ../modules/terraform.nix
-        ];
-
-        config._module.args = {
-          inherit pkgs;
-        };
-      });
-    };
-    dag = mkOption {
-      type = types.submodule (import ../modules/deps.nix);
-      default = { };
-    };
-    dir = mkOption {
-      type = types.path;
-    };
-    apply = mkOption {
-      type = types.unspecified;
+      type = nixosType [ ];
     };
   };
 }
