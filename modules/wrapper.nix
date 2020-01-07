@@ -12,11 +12,11 @@
   fi
   if [[ -n ''${TF_TARGETS-} ]]; then
     for target in $TF_TARGETS; do
-      ${concatStringsSep "\n" (k: "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -target=\$target\"") [ "plan" "apply" "destroy" ]}
+      ${concatMapStringsSep "\n" (k: "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -target=\$target\"") [ "plan" "apply" "destroy" ]}
     done
   fi
   if [[ -n ''${TF_STATE_FILE-} ]]; then
-    ${concatStringsSep "\n" (k:
+    ${concatMapStringsSep "\n" (k:
       "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -state=$TF_STATE_FILE\""
     ) ([ "plan" "apply" "output" "destroy" "refresh" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" ])}
   fi

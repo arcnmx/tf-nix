@@ -1,5 +1,5 @@
 { modulesPath, config, lib, pkgs, ... }: with lib; let
-  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl;
+  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl nixRunWrapper hclDir;
   inherit (config.terraform) outputs;
 in {
   config = {
@@ -143,6 +143,24 @@ in {
       };
     };
     dag.terraformConfig = config.terraform;
+
+    dir = hclDir {
+      inherit (config.dag) hcl;
+    };
+    apply = let
+      targets = optionals (!config.dag.isComplete) config.dag.targets;
+      script = ''
+        set -eu
+
+        export TF_TARGETS="${concatStringsSep " " targets}"
+        export TF_CONFIG_DIR=${config.dir}
+
+        ${config.terraform.terraform.package}/bin/terraform apply "$@"
+      '' + optionalString (!config.dag.isComplete) ''
+        nix run -f ${toString ../test.nix} example.apply --arg config ${toString ./example.nix} --arg terraformState $TF_STATE_FILE --argstr terraformTargets "${concatStringsSep "," targets}"
+      '';
+      terraform = pkgs.writeShellScriptBin "terraform" script;
+    in nixRunWrapper "terraform" terraform;
   };
 
   options = {
@@ -170,6 +188,12 @@ in {
     dag = mkOption {
       type = types.submodule (import ../modules/deps.nix);
       default = { };
+    };
+    dir = mkOption {
+      type = types.path;
+    };
+    apply = mkOption {
+      type = types.unspecified;
     };
   };
 }

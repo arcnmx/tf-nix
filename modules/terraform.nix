@@ -704,8 +704,8 @@ in {
   };
 
   config = {
-    terraform.package = {
-      terraform = let
+    terraform = {
+      package = let
         tf = {
           "0.11" = pkgs.terraform_0_11;
           "0.12" = pkgs.terraform_0_12;
@@ -714,7 +714,7 @@ in {
           google = "google-beta";
         }).${provider} or provider;
         mapProvider = p: provider: p.${translateProvider provider};
-        terraform = tf.withPlugins (p: map (mapProvider p) providers);
+        terraform = tf.withPlugins (ps: mapAttrsToList (_: p: mapProvider ps p.type) config.providers);
       in config.terraform.wrapper terraform;
     };
     hcl = {

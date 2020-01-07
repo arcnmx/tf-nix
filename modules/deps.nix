@@ -182,7 +182,7 @@ in {
       map (e: toHcl (fromHclPath e.key) scrubHcl) tfs
       ++ map (e: toHcl (fromHclPath e.key) scrubHclAll) incomplete
     );
-    targets = map (r: r.out.reference) tfs;
+    targets = map (e: (fromHclPath e.key).out.reference) tfs;
     /*
     #toJson = { name, value }: foldr (key: attrs: { ${key} = attrs; }) value (splitString "." name);
     incomplete' = builtins.toJSON (foldl recursiveUpdate {} (map toJson incomplete));

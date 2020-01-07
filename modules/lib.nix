@@ -78,6 +78,23 @@
   scrubHclAll = hcl: fromJSON (unsafeDiscardStringContext (toJSON hcl));
   scrubHcl = hcl: fromJSON (removeTerraformContext (toJSON hcl));
 
+  hclDir = {
+    name ? "terraform"
+  , hcl
+  }: pkgs.stdenvNoCC.mkDerivation {
+    name = "${name}.tf.json";
+    allowSubstitutes = false;
+    preferLocalBuild = true;
+
+    passAsFile = [ "hcl" "script" "buildCommand" ];
+    hcl = toJSON hcl;
+
+    buildCommand = ''
+     mkdir -p $out
+      install -Dm0644 $hclPath $out/$name
+    '';
+  };
+
   # strip a string of all marker references
   removeTerraformContext = str: let
     context = filterAttrs (k: value: tfMatch k == null) (getContext str);
@@ -107,7 +124,7 @@ in rec {
   inherit readState;
 
   inherit terraformContext terraformContextFor terraformContextForString terraformContextForDrv terraformContextFromDrv removeTerraformContext;
-  inherit fromHclPath combineHcl scrubHcl scrubHclAll;
+  inherit fromHclPath combineHcl scrubHcl scrubHclAll hclDir;
 
   inherit terraformExpr terraformSelf;
 
