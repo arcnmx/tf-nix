@@ -1,5 +1,6 @@
 { pkgs, config, lib }: with builtins; with lib; let
   terraformExpr = expr: "\${${expr}}";
+  terraformSelf = attr: terraformExpr "self.${attr}";
   # get all input context/dependencies for a derivation
   # https://github.com/NixOS/nix/issues/1245#issuecomment-401642781
   storeDirRe = replaceStrings [ "." ] [ "\\." ] builtins.storeDir;
@@ -8,7 +9,7 @@
   # not a real parser (yet?)
   readDrv = pkg: let
     drv = readFile pkg;
-    inputs = concatLists (filter isList (split re drv));
+    inputDrvs = concatLists (filter isList (split re drv));
   in {
     inherit inputDrvs;
   };
@@ -42,7 +43,7 @@
     closure = inputDrvs drv;
   in unique (concatMap (s: let
     context = terraformContextFromDrv s;
-  in if context == null then [] else context.key) closure);
+  in if context == null then [] else [ context.key ]) closure);
   terraformContextFromDrv = drv: let
     matches = tfMatch drv;
   in if matches == null then null else {
@@ -57,12 +58,14 @@
       resource = "resources";
       data = "resources";
       provider = "providers";
-      output = "providers";
-      var = "variables";
+      output = "outputs";
+      variable = "variables";
     }.${head path};
     cfg = config.${type};
     named = cfg.${name};
-    nameOf = r: r.name or r.alias;
+    nameOf = r: let
+      alias = if r.alias != null then r.alias else r.type;
+    in r.name or alias;
     find = findFirst (r: nameOf r == name) (throw "${toString p} not found") (attrValues cfg);
   in if cfg ? ${name} && nameOf named == name then named else find;
 
@@ -97,7 +100,7 @@ in rec {
   inherit terraformContext terraformContextFor terraformContextForString terraformContextForDrv terraformContextFromDrv removeTerraformContext;
   inherit fromHclPath;
 
-  inherit terraformExpr;
+  inherit terraformExpr terraformSelf;
 
   inherit (dag) dagTopoSort dagEntryAfter dagEntryBefore dagEntryAnywhere;
   inherit (run) nixRunWrapper;

@@ -167,14 +167,18 @@ in {
   };
 
   config = let
+    alltf = filter (e: e.type == "tf") config.sorted;
     tfs' = foldr (e: sum: if e.type == "tf" then sum ++ [ e ] else []) [] config.sorted;
     tfs = if tfs' == [] then filter (e: e.type == "tf") config.sorted else tfs';
-    incomplete = (partition (e: e.type != "tf" || any (i: i.key == v.key) tfs) e).wrong;
+    incomplete = (partition (e: e.type != "tf" || any (i: i.key == e.key) tfs) config.sorted).wrong;
 
     isComplete = incomplete == [ ];
     hcl = foldl recursiveUpdate { } (map (e: let
       r = fromHclPath e.key;
-    in attrsFromPath r.out.hclPath r.hcl) config.sorted);
+    in attrsFromPath r.out.hclPath r.hcl) alltf) // {
+      # TODO: this seems hacky but providers have a weird format so
+      provider = config.terraformConfig.hcl.provider;
+    };
     targets = map (r: r.out.reference) tfs;
     /*
     #toJson = { name, value }: foldr (key: attrs: { ${key} = attrs; }) value (splitString "." name);

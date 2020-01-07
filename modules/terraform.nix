@@ -47,7 +47,7 @@
       };
       # TODO: for_each
       connection = mkOption {
-        type = types.nullOr connectionType;
+        type = types.nullOr (connectionType config);
         default = null;
       };
       provisioners = mkOption {
@@ -259,7 +259,7 @@
       };
     };
   });
-  connectionType = types.submodule ({ config, ... }: {
+  connectionType = self: types.submodule ({ config, ... }: {
     options = {
       hcl = mkOption {
         type = types.attrsOf types.unspecified;
@@ -393,10 +393,14 @@
         inherit (config.winrm) https insecure cacert;
         use_ntlm = config.winrm.useNtlm;
       };
-      set = filterAttrs (_: v: v != null) {
-        # TODO: rewrite "self" terraform references
-        inherit (config) ssh winrm type user timeout scriptPath host;
-      };
+      set = let
+        attrs = {
+          inherit (config) ssh winrm type user timeout scriptPath host;
+        };
+        attrs' = filterAttrs (_: v: v != null) attrs;
+        selfRef = tf.terraformContext self.out.hclPathStr null + "\${${self.out.reference}.";
+        mapSelf = v: if isString v then replaceStrings [ "\${self." ] [ selfRef ] v else v;
+      in mapAttrs (_: mapSelf) attrs';
       nixStoreUrl = let
         user = if config.user == null then "root" else config.user;
         sshKey = optionalString (config.ssh.privateKeyFile != null) "?ssh-key=${config.ssh.privateKeyFile}";

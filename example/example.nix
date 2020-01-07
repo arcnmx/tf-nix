@@ -1,5 +1,5 @@
 { modulesPath, config, lib, pkgs, ... }: with lib; let
-  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformInput terraformNixStoreUrl;
+  inherit (config.terraform.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl;
   inherit (config.terraform) outputs;
 in {
   config = {
@@ -53,7 +53,7 @@ in {
             ssh_keys = singleton (do_access.referenceAttr "id");
           };
           connection = {
-            host = server.referenceAttr "ipv4_address";
+            host = terraformSelf "ipv4_address";
             ssh = {
               privateKey = access_key.referenceAttr "private_key_pem";
               privateKeyFile = access_file.referenceAttr "filename";
@@ -86,13 +86,13 @@ in {
           connection = server.connection.set;
           inputs.triggers = {
             # TODO: pull in all command strings automatically!
-            remote = server.connection.nixStoreUrl;
+            remote = server_nix_copy.connection.nixStoreUrl;
             system = config.nixos.system.build.toplevel;
           };
 
           # nix -> terraform reference
           provisioners = [ {
-            local-exec.command = "nix copy --substitute --to ${server.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
+            local-exec.command = "nix copy --substitute --to ${server_nix_copy.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
           } {
             remote-exec.inline = [
               "nix-env -p /nix/var/nix/profiles/system --set ${config.nixos.system.build.toplevel}"
