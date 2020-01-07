@@ -69,6 +69,15 @@
     find = findFirst (r: nameOf r == name) (throw "${toString p} not found") (attrValues cfg);
   in if cfg ? ${name} && nameOf named == name then named else find;
 
+  combineHcl = a: b: recursiveUpdate a b // optionalAttrs (a ? provider || b ? provider) {
+    provider = let
+      plist = p: if isList p then p else singleton p;
+    in plist a.provider or [] ++ plist b.provider or [];
+  };
+
+  scrubHclAll = hcl: fromJSON (unsafeDiscardStringContext (toJSON hcl));
+  scrubHcl = hcl: fromJSON (removeTerraformContext (toJSON hcl));
+
   # strip a string of all marker references
   removeTerraformContext = str: let
     context = filterAttrs (k: value: tfMatch k == null) (getContext str);
@@ -98,7 +107,7 @@ in rec {
   inherit readState;
 
   inherit terraformContext terraformContextFor terraformContextForString terraformContextForDrv terraformContextFromDrv removeTerraformContext;
-  inherit fromHclPath;
+  inherit fromHclPath combineHcl scrubHcl scrubHclAll;
 
   inherit terraformExpr terraformSelf;
 
