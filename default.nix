@@ -58,6 +58,13 @@
           default = ./.;
         };
       };
+      run = mkOption {
+        type = types.attrsOf types.package;
+        default = { };
+      };
+      shell = mkOption {
+        type = types.package;
+      };
     };
 
     config = {
@@ -66,6 +73,25 @@
       in {
         cwd = mkIf (pwd != "") (mkDefault pwd);
       };
+      run = {
+        apply = let
+          pkg = apply {
+            inherit config;
+            deps = tfEvalDeps {
+              inherit config;
+            };
+          };
+        in nixRunWrapper "terraform" pkg;
+        terraform = let
+          pkg = terraform {
+            inherit config;
+            deps = tfEvalDeps {
+              inherit config;
+            };
+          };
+        in nixRunWrapper "terraform" pkg;
+      };
+      shell = shell' config;
     };
   };
   tfEval = config: (evalModules {
@@ -165,26 +191,4 @@
       '';
     });
   in shell;
-  config' = tfEval config;
-in rec {
-  config = config';
-  run = {
-    apply = let
-      pkg = apply {
-        inherit config;
-        deps = tfEvalDeps {
-          inherit config;
-        };
-      };
-    in nixRunWrapper "terraform" pkg;
-    terraform = let
-      pkg = terraform {
-        inherit config;
-        deps = tfEvalDeps {
-          inherit config;
-        };
-      };
-    in nixRunWrapper "terraform" pkg;
-  };
-  shell = shell' config;
-}
+in tfEval config

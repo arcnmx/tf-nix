@@ -91,6 +91,7 @@ in {
 
         # nix -> terraform reference
         provisioners = [ {
+          # NOTE: `server.connection.nixStoreUrl` is incorrect here because it would contain references to `${self}` instead
           local-exec.command = "nix copy --substitute --to ${server_nix_copy.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
         } {
           remote-exec.inline = [

@@ -17,6 +17,9 @@ Try out the [example](./example/example.nix):
 export NIX_PATH="$NIX_PATH:tf=$PWD"
 export TF_VAR_do_token=XXX
 nix run tf.run.apply --arg config ./example/example.nix
+
+# To undo the above:
+nix run tf.run.terraform --arg config ./example/example.nix -c terraform destroy
 ```
 
 ## See Also
