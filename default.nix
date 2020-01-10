@@ -1,5 +1,5 @@
 { pkgs ? import <nixpkgs> { }, config ? ./example/example.nix, terraformState ? false, terraformTargets ? [] }: with pkgs.lib; let
-  inherit (import ./modules/run.nix { inherit pkgs; }) nixRunWrapper;
+  inherit (import ./lib/run.nix { inherit pkgs; }) nixRunWrapper;
   terraformSecret = config: name: let
   in throw "ugh secret ${name}";
   pkgsModule = { ... }: {

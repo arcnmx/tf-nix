@@ -1,7 +1,7 @@
 { pkgs, config, lib, ... }: with lib; let
   tconfig = config;
   # TODO: filter out all empty/unnecessary/default keys and objects
-  tf = import ./lib.nix {
+  tf = import ../lib/lib.nix {
     inherit pkgs config lib;
   };
   pathType = types.str; # types.path except that ${} expressions work too (and also sometimes relative paths?)
@@ -688,7 +688,7 @@ in {
       };
       wrapper = mkOption {
         type = types.unspecified;
-        default = terraform: pkgs.callPackage ./wrapper.nix { inherit terraform; };
+        default = terraform: pkgs.callPackage ../lib/wrapper.nix { inherit terraform; };
       };
       providers = mkOption {
         type = types.listOf types.str;
