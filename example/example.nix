@@ -2,6 +2,9 @@
   inherit (config.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl nixRunWrapper hclDir;
   inherit (config) outputs;
 in {
+  imports = [
+    ../modules/external.nix
+  ];
   config = {
     resources = with config.resources; {
       access_key = {
@@ -23,6 +26,11 @@ in {
           filename = "${toString config.paths.dataDir}/access.private.pem";
           file_permission = "0500";
         };
+      };
+
+      secret = {
+        provider = "random";
+        type = "pet";
       };
 
       do_access = {
@@ -60,24 +68,6 @@ in {
         };
       };
 
-      example = {
-        provider = "digitalocean";
-        type = "domain";
-        inputs.name = "example.com";
-      };
-
-      www = {
-        provider = "digitalocean";
-        type = "record";
-        inputs = {
-          type = "A";
-          name = "www";
-          # intra-terraform reference
-          domain = example.referenceAttr "name";
-          value = server.referenceAttr "ipv4_address";
-        };
-      };
-
       server_nix_copy = {
         provider = "null";
         type = "resource";
@@ -91,6 +81,9 @@ in {
 
         # nix -> terraform reference
         provisioners = [ {
+          # first check that remote is reachable (terraform includes more delay/retry logic than nix does)
+          remote-exec.command = "true";
+        } {
           # NOTE: `server.connection.nixStoreUrl` is incorrect here because it would contain references to `${self}` instead
           local-exec.command = "nix copy --substitute --to ${server_nix_copy.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
         } {
@@ -113,6 +106,10 @@ in {
     outputs = with config.resources; {
       do_key.value = access_key.referenceAttr "public_key_openssh";
       motd.value = server.referenceAttr "ipv4_address";
+      secret = {
+        value = secret.referenceAttr "id";
+        sensitive = true;
+      };
     };
 
     # TODO
@@ -122,18 +119,26 @@ in {
     #  ];
     #};
 
-    nixos = { modulesPath, ... }: {
+    nixos = { config, modulesPath, ... }: {
       imports = [
         # TODO: ugh needs https://github.com/NixOS/nixpkgs/pull/75031
         (modulesPath + "/virtualisation/digital-ocean-config.nix")
+        ../nixos/secrets.nix
       ];
 
       config = {
+        secrets = {
+          files.pet = {
+            text = outputs.secret.ref;
+          };
+          external = true;
+        };
         #boot.isContainer = true;
 
         # terraform -> nix references
         users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.ref;
-        users.motd = "welcome to ${outputs.motd.ref}";
+        users.motd = "welcome to ${outputs.motd.ref}, also don't look at ${config.secrets.files.pet.path}";
+        security.pam.services.sshd.showMotd = true;
         #services.nginx = {
         #  # terraform -> nix reference
         #  bindIp = terraformOutput "resource.something_server.server" "ip";
@@ -141,6 +146,12 @@ in {
         nixpkgs.system = pkgs.system;
       };
     };
+    secrets.deploy = [
+      {
+        nixosConfig = config.nixos;
+        connection = config.resources.server.connection.set;
+      }
+    ];
   };
 
   options = {

@@ -30,6 +30,7 @@
       };
       inputs = mkOption {
         type = types.attrsOf types.unspecified;
+        default = { };
         example = {
           instance_type = "t2.micro";
         };
@@ -231,7 +232,7 @@
               inherit (config) destination;
             } // optionalAttrs (config.source != null) {
               source = assert config.content == null; config.source;
-            } // optionalAttrs (length config.content != null) {
+            } // optionalAttrs (config.content != null) {
               content = assert config.source == null; config.content;
             };
           };
