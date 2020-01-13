@@ -112,12 +112,11 @@ in {
       };
     };
 
-    # TODO
-    #targets = {
-    #  server = [
-    #    "server_nix_copy"
-    #  ];
-    #};
+    run = with config.resources; {
+      ssh = {
+        command = "ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"}";
+      };
+    };
 
     nixos = { config, modulesPath, ... }: {
       imports = [
@@ -129,15 +128,15 @@ in {
       config = {
         secrets = {
           files.pet = {
-            text = outputs.secret.ref;
+            text = outputs.secret.get;
           };
           external = true;
         };
         #boot.isContainer = true;
 
         # terraform -> nix references
-        users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.ref;
-        users.motd = "welcome to ${outputs.motd.ref}, also don't look at ${config.secrets.files.pet.path}";
+        users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.get;
+        users.motd = "welcome to ${outputs.motd.get}, also don't look at ${config.secrets.files.pet.path}";
         security.pam.services.sshd.showMotd = true;
         #services.nginx = {
         #  # terraform -> nix reference

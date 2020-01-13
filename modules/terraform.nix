@@ -547,7 +547,7 @@
           internal = true;
         };
       };
-      ref = mkOption {
+      get = mkOption {
         type = types.str;
       };
     };
@@ -567,7 +567,7 @@
         hclPath = [ "output" config.name ];
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      ref = mkDefault (tf.terraformContext config.out.hclPathStr null);
+      get = mkDefault (tf.terraformContext config.out.hclPathStr null);
     };
   });
   moduleType = types.submodule ({ name, config, ... }: {
