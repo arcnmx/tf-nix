@@ -22,7 +22,7 @@ in {
         provider = "local";
         type = "file";
         inputs = {
-          sensitive_content = access_key.referenceAttr "private_key_pem";
+          sensitive_content = access_key.refAttr "private_key_pem";
           filename = "${toString config.paths.dataDir}/access.private.pem";
           file_permission = "0500";
         };
@@ -38,7 +38,7 @@ in {
         type = "ssh_key";
         inputs = {
           name = "terraform/${config.nixos.networking.hostName} access key";
-          public_key = access_key.referenceAttr "public_key_openssh";
+          public_key = access_key.refAttr "public_key_openssh";
         };
       };
 
@@ -53,17 +53,17 @@ in {
         provider = "digitalocean";
         type = "droplet";
         inputs = {
-          image = nixos_unstable.referenceAttr "id";
+          image = nixos_unstable.refAttr "id";
           name = "server";
           region = "tor1";
           size = "s-1vcpu-2gb";
-          ssh_keys = singleton (do_access.referenceAttr "id");
+          ssh_keys = singleton (do_access.refAttr "id");
         };
         connection = {
           host = terraformSelf "ipv4_address";
           ssh = {
-            privateKey = access_key.referenceAttr "private_key_pem";
-            privateKeyFile = access_file.referenceAttr "filename";
+            privateKey = access_key.refAttr "private_key_pem";
+            privateKeyFile = access_file.refAttr "filename";
           };
         };
       };
@@ -104,10 +104,10 @@ in {
     };
 
     outputs = with config.resources; {
-      do_key.value = access_key.referenceAttr "public_key_openssh";
-      motd.value = server.referenceAttr "ipv4_address";
+      do_key.value = access_key.refAttr "public_key_openssh";
+      motd.value = server.refAttr "ipv4_address";
       secret = {
-        value = secret.referenceAttr "id";
+        value = secret.refAttr "id";
         sensitive = true;
       };
     };

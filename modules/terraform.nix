@@ -93,7 +93,7 @@
           internal = true;
         };
       };
-      referenceAttr = mkOption {
+      refAttr = mkOption {
         type = types.unspecified;
         internal = true;
       };
@@ -113,7 +113,7 @@
         hclPath = [ config.out.dataType config.out.resourceKey config.name ];
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      referenceAttr = attr: tf.terraformContext config.out.hclPathStr attr
+      refAttr = attr: tf.terraformContext config.out.hclPathStr attr
         + tf.terraformExpr "${config.out.reference}${optionalString (attr != null) ".${attr}"}";
       hcl = config.inputs // optionalAttrs (config.count != 1) {
         inherit (config) count;
