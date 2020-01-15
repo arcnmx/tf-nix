@@ -112,11 +112,11 @@ in {
       };
     };
 
-    run = with config.resources; {
-      ssh = {
-        command = "ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"}";
-      };
-    };
+    #run = with config.resources; {
+    #  ssh = {
+    #    command = "ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"}";
+    #  };
+    #};
 
     nixos = { config, modulesPath, ... }: {
       imports = [
@@ -132,17 +132,17 @@ in {
           };
           external = true;
         };
-        #boot.isContainer = true;
 
         # terraform -> nix references
         users.users.root.openssh.authorizedKeys.keys = singleton outputs.do_key.get;
-        users.motd = "welcome to ${outputs.motd.get}, also don't look at ${config.secrets.files.pet.path}";
+        users.motd = ''
+          welcome to ${outputs.motd.get}
+          please don't look at ${config.secrets.files.pet.path}, it's private.
+        '';
         security.pam.services.sshd.showMotd = true;
-        #services.nginx = {
-        #  # terraform -> nix reference
-        #  bindIp = terraformOutput "resource.something_server.server" "ip";
-        #};
-        nixpkgs.system = pkgs.system;
+
+        # slim build
+        documentation.enable = false;
       };
     };
     secrets.deploy = [
