@@ -97,6 +97,9 @@
         type = types.unspecified;
         internal = true;
       };
+      getAttr = mkOption {
+        type = types.unspecified;
+      };
     };
 
     config = {
@@ -126,6 +129,10 @@
       } // optionalAttrs (config.out.provider != null) {
         provider = tf.terraformContext config.out.provider.out.hclPathStr null + config.provider;
       };
+      getAttr = attr: let
+        ctx = tf.terraformContext config.out.hclPathStr attr;
+        exists = tconfig.state.resources ? ${config.out.reference};
+      in mkOptionDefault (ctx + optionalString exists tconfig.state.resources.${config.out.reference});
     };
   });
   provisionerType = types.submodule ({ config, ... }: {
@@ -567,7 +574,10 @@
         hclPath = [ "output" config.name ];
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      get = mkDefault (tf.terraformContext config.out.hclPathStr null);
+      get = let
+        ctx = tf.terraformContext config.out.hclPathStr null;
+        exists = tconfig.state.outputs ? ${config.name};
+      in mkOptionDefault (ctx + optionalString exists tconfig.state.outputs.${config.name});
     };
   });
   moduleType = types.submodule ({ name, config, ... }: {
@@ -651,6 +661,18 @@
       inherit (config) create delete update;
     };
   });
+  stateType = types.submodule ({ config, ... }: {
+    options = {
+      outputs = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
+      };
+      resources = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
+      };
+    };
+  });
 in {
   options = {
     resources = mkOption {
@@ -671,6 +693,11 @@ in {
     };
     modules = mkOption {
       type = types.attrsOf moduleType;
+      default = { };
+    };
+
+    state = mkOption {
+      type = types.attrsOf stateType;
       default = { };
     };
 

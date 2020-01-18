@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix, terraformState ? false, terraformTargets ? [] }: with pkgs.lib; let
+{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix, terraformState ? false, terraformTargets ? null }: with pkgs.lib; let
   inherit (import ./lib/run.nix { inherit pkgs; }) nixRunWrapper;
   terraformSecret = config: name: let
   in throw "ugh secret ${name}";
@@ -22,14 +22,17 @@
   }).config;
   configPath = config;
   stateModule = { config, ... }: {
-    config.outputs = let
+    config = let
       state = builtins.fromJSON (builtins.readFile config.paths.stateFile);
-      outputs = state.outputs;
-      #findOutput = key: findFirst (attr: config.outputs.${attr}.name == key) (attrNames config.outputs);
-      findOutput = key: key; # TODO: there's no requirement that ${x}.output.name == x, but infinite recursion...
-    in mapAttrs' (k: v: nameValuePair (findOutput k) {
-      ref = v.value;
-    }) outputs;
+      mapInstance = ins: let
+        prefix = optionalString (ins.instances.mode == "managed") "data.";
+        key = "${prefix}${ins.type}.${ins.name}";
+        singular = nameValuePair key (head ins.instances);
+      in map (ins: nameValuePair "${key}${optionalString (ins ? index_key) "[${ins.index_key}]"}" ins.attributes) ins.instances;
+    in {
+      outputs = mapAttrs (k: v: v.value) state.outputs;
+      resources = filterAttrs (k: _: terraformTargets == null || elem k terraformTargets) (listToAttrs (concatMap mapInstance state.resources.instances));
+    };
   };
   configModule = { config, ... }: {
     options = {

@@ -112,11 +112,11 @@ in {
       };
     };
 
-    #run = with config.resources; {
-    #  ssh = {
-    #    command = "ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"}";
-    #  };
-    #};
+    run = with config.resources; {
+      ssh = {
+        command = "ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"}";
+      };
+    };
 
     nixos = { config, modulesPath, ... }: {
       imports = [
