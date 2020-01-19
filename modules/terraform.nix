@@ -5,6 +5,60 @@
     inherit pkgs config lib;
   };
   pathType = types.str; # types.path except that ${} expressions work too (and also sometimes relative paths?)
+  providerReferenceType' = types.submodule ({ config, ... }: let
+    split = splitString "." config.reference;
+  in {
+    options = {
+      # TODO: support just "alias" since "config.providers" is an attrset so they must be unique anyway?
+      type = mkOption {
+        type = types.str;
+        default = head split;
+      };
+      alias = mkOption {
+        type = types.nullOr types.str;
+        default = if tail split == [ ] then null else elemAt split 1;
+      };
+      reference = mkOption {
+        type = types.nullOr types.str;
+        default = "${config.type}${optionalString (config.alias != null) ".${config.alias}"}";
+      };
+      isDefault = mkOption {
+        type = types.bool;
+        default = config.alias == null;
+        readOnly = true;
+      };
+      out = {
+        provider = mkOption {
+          type = types.unspecified;
+          readOnly = true;
+        };
+      };
+      ref = mkOption {
+        type = types.str;
+        readOnly = true;
+      };
+      set = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+    };
+    config = {
+      out = {
+        provider = let
+          default = if !config.isDefault
+            then throw "provider ${config.reference} not found"
+            else null;
+        in findFirst (p: p.out.reference == config.reference) default (attrValues tconfig.providers);
+      };
+      ref =
+        optionalString (config.out.provider != null) (tf.terraformContext config.out.provider.out.hclPathStr null)
+        + config.reference;
+      set = {
+        inherit (config) type alias reference;
+      };
+    };
+  });
+  providerReferenceType = types.coercedTo types.str (reference: { inherit reference; }) providerReferenceType';
   resourceType = types.submodule ({ config, name, ... }: {
     options = {
       name = mkOption {
@@ -20,7 +74,7 @@
         default = false;
       };
       provider = mkOption {
-        type = types.str;
+        type = providerReferenceType;
         example = "aws.alias";
         # TODO: support just "alias" since "config.providers" is an attrset so they must be unique anyway?
       };
@@ -64,14 +118,6 @@
         readOnly = true;
       };
       out = {
-        providerType = mkOption {
-          type = types.str;
-          internal = true;
-        };
-        provider = mkOption {
-          type = types.unspecified;
-          internal = true;
-        };
         resourceKey = mkOption {
           type = types.str;
           internal = true;
@@ -104,13 +150,7 @@
 
     config = {
       out = {
-        providerType = head (splitString "." config.provider);
-        provider = let
-          default = if config.provider != config.out.providerType
-            then throw "provider ${config.provider} not found"
-            else null;
-        in findFirst (p: p.out.reference == config.provider) default (attrValues tconfig.providers);
-        resourceKey = "${config.out.providerType}_${config.type}";
+        resourceKey = "${config.provider.type}_${config.type}";
         dataType = if config.dataSource then "data" else "resource";
         reference = optionalString config.dataSource "data." + config.out.resourceKey + ".${config.name}";
         hclPath = [ config.out.dataType config.out.resourceKey config.name ];
@@ -126,8 +166,8 @@
         connection = config.connection.hcl;
       } // optionalAttrs (config.timeouts.hcl != { }) {
         timeouts = config.timeouts.hcl;
-      } // optionalAttrs (config.out.provider != null) {
-        provider = tf.terraformContext config.out.provider.out.hclPathStr null + config.provider;
+      } // optionalAttrs (!config.provider.isDefault || config.provider.out.provider != null) {
+        provider = config.provider.ref;
       };
       getAttr = attr: let
         ctx = tf.terraformContext config.out.hclPathStr attr;
@@ -697,7 +737,7 @@ in {
     };
 
     state = mkOption {
-      type = types.attrsOf stateType;
+      type = stateType;
       default = { };
     };
 
@@ -749,7 +789,7 @@ in {
       in config.terraform.wrapper terraform;
       providers = unique (
         mapAttrsToList (_: p: p.type) config.providers
-        ++ mapAttrsToList (_: r: r.out.providerType) config.resources
+        ++ mapAttrsToList (_: r: r.provider.type) config.resources
       );
     };
     hcl = {

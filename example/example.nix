@@ -122,7 +122,7 @@ in {
       imports = [
         # TODO: ugh needs https://github.com/NixOS/nixpkgs/pull/75031
         (modulesPath + "/virtualisation/digital-ocean-config.nix")
-        ../nixos/secrets.nix
+        ../modules/nixos/secrets.nix
       ];
 
       config = {
