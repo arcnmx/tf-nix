@@ -51,7 +51,7 @@
         in findFirst (p: p.out.reference == config.reference) default (attrValues tconfig.providers);
       };
       ref =
-        optionalString (config.out.provider != null) (tf.terraformContext config.out.provider.out.hclPathStr null)
+        optionalString (config.out.provider != null) (tf.terraformContext false config.out.provider.out.hclPathStr null)
         + config.reference;
       set = {
         inherit (config) type alias reference;
@@ -156,7 +156,7 @@
         hclPath = [ config.out.dataType config.out.resourceKey config.name ];
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      refAttr = attr: tf.terraformContext config.out.hclPathStr attr
+      refAttr = attr: tf.terraformContext false config.out.hclPathStr attr
         + tf.terraformExpr "${config.out.reference}${optionalString (attr != null) ".${attr}"}";
       hcl = config.inputs // optionalAttrs (config.count != 1) {
         inherit (config) count;
@@ -170,7 +170,7 @@
         provider = config.provider.ref;
       };
       getAttr = attr: let
-        ctx = tf.terraformContext config.out.hclPathStr attr;
+        ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
       in mkOptionDefault (ctx + optionalString exists tconfig.state.resources.${config.out.reference});
     };
@@ -446,7 +446,7 @@
           inherit (config) ssh winrm type user timeout scriptPath host;
         };
         attrs' = filterAttrs (_: v: v != null) attrs;
-        selfRef = tf.terraformContext self.out.hclPathStr null + "\${${self.out.reference}.";
+        selfRef = tf.terraformContext false self.out.hclPathStr null + "\${${self.out.reference}.";
         mapSelf = v: if isString v then replaceStrings [ "\${self." ] [ selfRef ] v else v;
       in mapAttrs (_: mapSelf) attrs';
       nixStoreUrl = let
@@ -547,7 +547,7 @@
         hclPath = [ "variable" config.name ];
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      ref = tf.terraformContext config.out.hclPathStr null
+      ref = tf.terraformContext false config.out.hclPathStr null
         + tf.terraformExpr config.out.reference;
     };
   });
@@ -615,7 +615,7 @@
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
       get = let
-        ctx = tf.terraformContext config.out.hclPathStr null;
+        ctx = tf.terraformContext exists config.out.hclPathStr null;
         exists = tconfig.state.outputs ? ${config.name};
       in mkOptionDefault (ctx + optionalString exists tconfig.state.outputs.${config.name});
     };

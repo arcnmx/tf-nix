@@ -18,16 +18,25 @@
   inputDrvs = drv: inputDrvs' [] [ drv ];
 
   # marker derivation for tracking (unresolved?) terraform resource dependencies, attaching context to json, etc.
-  tfPrefix = "tf-1terraformReference-";
-  tfMatch = match ".*-${tfPrefix}(.*)\\.drv";
-  terraformContext = path: attr: let
+  terraformContext = resolved: path: attr: let
     contextDrv = derivation {
       inherit (pkgs) system;
-      name = "${tfPrefix}${path}";
-      builder = "unresolved terraform reference";
+      name = "tf-${if resolved then "2" else "1"}terraformReference-${path}";
+      builder = if resolved
+        then "${pkgs.coreutils}/bin/touch"
+        else "unresolved terraform reference";
+      args = optionals resolved [ (placeholder "out") ];
       #__terraformPath = path;
     };
   in addContextFrom "${contextDrv}" "";
+  terraformContextFromDrv = drvPath: let
+    tfMatch = match ".*-tf-([12])terraformReference-(.*)\\.drv";
+    matches = tfMatch drvPath;
+  in mapNullable (match: {
+    inherit drvPath;
+    key = elemAt match 1;
+    resolved = elemAt match 0 == "2";
+  }) matches;
 
   # extract marker references
   terraformContextFor = target:
@@ -44,11 +53,6 @@
   in unique (concatMap (s: let
     context = terraformContextFromDrv s;
   in if context == null then [] else [ context.key ]) closure);
-  terraformContextFromDrv = drv: let
-    matches = tfMatch drv;
-  in if matches == null then null else {
-    key = head matches;
-  };
 
   # ugh
   fromHclPath = p: let
@@ -108,7 +112,7 @@
 
   # strip a string of all marker references
   removeTerraformContext = str: let
-    context = filterAttrs (k: value: tfMatch k == null) (getContext str);
+    context = filterAttrs (k: value: terraformContextFromDrv k == null) (getContext str);
   in setContext context str;
 
   dag = import ./dag.nix { inherit lib; };
