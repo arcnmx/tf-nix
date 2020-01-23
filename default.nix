@@ -60,6 +60,14 @@
           type = types.path;
           default = ./.;
         };
+        hcl = {
+          all = mkOption {
+            type = types.path;
+          };
+          stage = mkOption {
+            type = types.path;
+          };
+        };
       };
       run = mkOption {
         type = types.attrsOf types.package;
@@ -68,29 +76,41 @@
       shell = mkOption {
         type = types.package;
       };
+      deps = mkOption {
+        type = types.unspecified;
+      };
     };
 
     config = {
+      deps = tfEvalDeps {
+        inherit config;
+      };
       paths = let
         pwd = builtins.getEnv "PWD";
       in {
         cwd = mkIf (pwd != "") (mkDefault pwd);
+        hcl = {
+          all = config.lib.tf.hclDir {
+            inherit (config) hcl;
+          };
+          stage = config.lib.tf.hclDir {
+            inherit (config.deps) hcl;
+          };
+        };
       };
       run = {
         apply = let
           pkg = apply {
             inherit config;
-            deps = tfEvalDeps {
-              inherit config;
-            };
+            inherit (config) deps;
+            dir = config.paths.hcl.stage;
           };
         in nixRunWrapper "terraform" pkg;
         terraform = let
           pkg = terraform {
             inherit config;
-            deps = tfEvalDeps {
-              inherit config;
-            };
+            inherit (config) deps;
+            dir = config.paths.hcl.stage;
           };
         in nixRunWrapper "terraform" pkg;
       };
@@ -136,11 +156,10 @@
   };
   terraform = {
     config
-  , deps ? null
+  , dir ? config.lib.tf.hclDir {
+    hcl = if deps == null then config.hcl else deps.hcl;
+  }, deps ? null
   }: let
-    dir = config.lib.tf.hclDir {
-      hcl = if deps == null then config.hcl else deps.hcl;
-    };
     script = ''
       set -eu
 
@@ -154,10 +173,11 @@
   apply = {
     config
   , deps
+  , dir
   , targets ? optionals (!deps.isComplete) deps.targets
   }: let
     package = terraform {
-      inherit config deps;
+      inherit config deps dir;
     };
     script = ''
       set -eux
