@@ -81,11 +81,11 @@ isNixos: { pkgs, config, lib, ... }: with lib; let
         (mkIf (config.text == null && builtins ? hashFile)
           (mkDefault fileHash))
       ];
-      path = mkDefault "${config.out.dir}/${config.fileName}";
+      path = mkOptionDefault "${config.out.dir}/${config.fileName}";
       out = {
         dir = let
           root = if config.persistent then cfg.persistentRoot else cfg.root;
-        in "${root}/${config.sha256}";
+        in mkOptionDefault "${root}/${config.sha256}";
         checkHash = # TODO: add this to assertions
           if builtins.pathExists config.source then config.sha256 == fileHash
           else if config.text != null then config.sha256 == textHash
