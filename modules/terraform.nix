@@ -97,7 +97,7 @@
           The "default" alias will be used as a fallback if no alias is provided.
         '';
       };
-      dependencies = mkOption {
+      dependsOn = mkOption {
         type = types.listOf types.str;
         default = [ ];
       };
@@ -144,12 +144,19 @@
           internal = true;
         };
       };
+      importAttr = mkOption {
+        type = types.unspecified;
+      };
       refAttr = mkOption {
         type = types.unspecified;
         internal = true;
       };
       getAttr = mkOption {
         type = types.unspecified;
+      };
+      namedRef = mkOption {
+        type = types.unspecified;
+        internal = true;
       };
     };
 
@@ -167,6 +174,8 @@
         inherit (config) count;
       } // optionalAttrs (config.provisioners != [ ]) {
         provisioner = map (p: p.hcl) config.provisioners;
+      } // optionalAttrs (config.dependsOn != [ ]) {
+        depends_on = config.dependsOn;
       } // optionalAttrs (config.connection != null) {
         connection = config.connection.hcl;
       } // optionalAttrs (config.timeouts.hcl != { }) {
@@ -174,10 +183,16 @@
       } // optionalAttrs (!config.provider.isDefault || config.provider.out.provider != null) {
         provider = config.provider.ref;
       };
-      getAttr = attr: let
+      getAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
-      in mkOptionDefault (ctx + optionalString exists tconfig.state.resources.${config.out.reference});
+      in (ctx + optionalString exists tconfig.state.resources.${config.out.reference}.${attr}));
+      importAttr = mkOptionDefault (attr: let
+        ctx = tf.terraformContext exists config.out.hclPathStr attr;
+        exists = tconfig.state.resources ? ${config.out.reference};
+      in if exists then tconfig.state.resources.${config.out.reference}.${attr} else throw "imported resource ${config.out.reference} not found");
+      namedRef = tf.terraformContext false config.out.hclPathStr null
+        + config.out.reference;
     };
   });
   provisionerType = types.submodule ({ config, ... }: {
@@ -505,6 +520,26 @@
       };
     };
   });
+  variableValidationType = types.submodule ({ config, ... }: {
+    options = {
+      condition = mkOption {
+        type = types.str;
+      };
+      errorMessage = mkOption {
+        type = types.str;
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+    };
+    config = {
+      hcl = {
+        inherit (config) condition;
+        error_message = config.errorMessage;
+      };
+    };
+  });
   variableType = types.submodule ({ name, config, ... }: {
     options = {
       type = mkOption {
@@ -518,6 +553,17 @@
       name = mkOption {
         type = types.str;
         default = name;
+      };
+      validation = mkOption {
+        # new in 0.13
+        type = types.nullOr variableValidationType;
+        default = null;
+      };
+      value = {
+        shellCommand = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
       };
       hcl = mkOption {
         type = types.attrsOf types.unspecified;
@@ -546,6 +592,7 @@
     config = {
       hcl = filterAttrs (_: v: v != null) {
         inherit (config) type default;
+        validation = mapNullable (v: v.hcl) config.validation;
       };
       out = {
         reference = "var.${config.name}";
@@ -621,8 +668,8 @@
       };
       get = let
         ctx = tf.terraformContext exists config.out.hclPathStr null;
-        exists = tconfig.state.outputs ? ${config.name};
-      in mkOptionDefault (ctx + optionalString exists tconfig.state.outputs.${config.name});
+        exists = tconfig.state.outputs ? ${config.out.reference};
+      in mkOptionDefault (ctx + optionalString exists tconfig.state.outputs.${config.out.reference});
     };
   });
   moduleType = types.submodule ({ name, config, ... }: {
@@ -706,18 +753,6 @@
       inherit (config) create delete update;
     };
   });
-  stateType = types.submodule ({ config, ... }: {
-    options = {
-      outputs = mkOption {
-        type = types.attrsOf types.unspecified;
-        default = { };
-      };
-      resources = mkOption {
-        type = types.attrsOf types.unspecified;
-        default = { };
-      };
-    };
-  });
 in {
   options = {
     resources = mkOption {
@@ -741,14 +776,20 @@ in {
       default = { };
     };
 
-    state = mkOption {
-      type = stateType;
-      default = { };
+    state = {
+      outputs = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
+      };
+      resources = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
+      };
     };
 
     terraform = {
       version = mkOption {
-        type = types.enum [ "0.11" "0.12" ];
+        type = types.enum [ "0.11" "0.12" "0.13" ];
         default = "0.12";
       };
       googleBeta = mkOption {
@@ -759,12 +800,40 @@ in {
         type = types.package;
         readOnly = true;
       };
+      cli = mkOption {
+        type = types.package;
+        readOnly = true;
+      };
       wrapper = mkOption {
         type = types.unspecified;
         default = terraform: pkgs.callPackage ../lib/wrapper.nix { inherit terraform; };
       };
       providers = mkOption {
         type = types.listOf types.str;
+      };
+      refreshOnApply = mkOption {
+        type = types.bool;
+        default = true;
+      };
+      autoApprove = mkOption {
+        type = types.bool;
+        default = false;
+      };
+      logLevel = mkOption {
+        type = types.enum [ "TRACE" "DEBUG" "INFO" "WARN" "ERROR" "" ];
+        default = "";
+      };
+      logPath = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+      };
+      dataDir = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+      };
+      environment = mkOption {
+        type = types.attrsOf types.unspecified;
+        default = { };
       };
     };
 
@@ -785,6 +854,7 @@ in {
         tf = {
           "0.11" = pkgs.terraform_0_11;
           "0.12" = pkgs.terraform_0_12;
+          "0.13" = pkgs.terraform_0_13;
         }.${config.terraform.version};
         translateProvider = provider: (optionalAttrs config.terraform.googleBeta {
           google = "google-beta";
@@ -796,6 +866,32 @@ in {
         mapAttrsToList (_: p: p.type) config.providers
         ++ mapAttrsToList (_: r: r.provider.type) config.resources
       );
+      cli = let
+        vars = config.terraform.environment;
+      in pkgs.writeShellScriptBin "terraform" ''
+        set -xeu
+        ${concatStringsSep "\n" (mapAttrsToList (k: v: ''export ${k}="${v}"'') vars)}
+
+        exec ${config.terraform.package}/bin/terraform "$@"
+      '';
+      environment =
+        mapAttrs' (_: var:
+          nameValuePair "TF_VAR_${var.name}" (mkOptionDefault "$(${var.value.shellCommand})")
+        ) (filterAttrs (_: var: var.value.shellCommand != null) config.variables) // {
+          TF_CONFIG_DIR = mkOptionDefault (tf.hclDir {
+            inherit hcl;
+          });
+          TF_LOG_PATH = mkIf (config.terraform.logPath != null) (mkOptionDefault (toString config.terraform.logPath));
+          TF_DATA_DIR = mkIf (config.terraform.dataDir != null) (mkOptionDefault (toString config.terraform.dataDir));
+          TF_STATE_FILE = mkIf (config.state.file != null) (mkOptionDefault (toString config.state.file));
+          TF_CLI_CONFIG_FILE = mkOptionDefault (pkgs.writeText "terraformrc" ''
+            disable_checkpoint = true
+          '');
+          TF_CLI_ARGS_refresh = mkOptionDefault "-compact-warnings";
+          TF_CLI_ARGS_apply = mkOptionDefault "-compact-warnings -refresh=${if config.terraform.refreshOnApply then "true" else "false"}${optionalString config.terraform.autoApprove " -auto-approve"}";
+          TF_IN_AUTOMATION = mkOptionDefault "1";
+          TF_LOG = mkOptionDefault config.terraform.logLevel;
+        };
     };
     hcl = {
       resource = let
@@ -812,6 +908,9 @@ in {
       in mkIf (providers != [ ]) (map (p: { ${p.type} = p.hcl; }) providers);
       output = mkIf (config.outputs != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.outputs);
       variables = mkIf (config.variables != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.variables);
+    };
+    runners.run = {
+      terraform.package = config.terraform.cli;
     };
     lib = {
       inherit tf;

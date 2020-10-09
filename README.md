@@ -4,9 +4,9 @@
 
 ## Features and Goals
 
-- [ ] NixOS deployment
-- [ ] Secret and key deployment
 - [ ] Health checks and maintenance commands
+- [ ] NixOS deployment
+- [x] Secret and key deployment
 - [x] Pure nix configuration
 
 ## Example

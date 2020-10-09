@@ -1,40 +1,12 @@
-{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix, terraformState ? false, terraformTargets ? null }: with pkgs.lib; let
-  inherit (import ./lib/run.nix { inherit pkgs; }) nixRunWrapper;
-  terraformSecret = config: name: let
-  in throw "ugh secret ${name}";
+{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix }: with pkgs.lib; let
   pkgsModule = { ... }: {
     config._module.args = {
       pkgs = mkDefault pkgs;
     };
   };
   nixosModulesPath = toString (pkgs.path + "/nixos/modules");
-  tfModule = ./modules/terraform.nix;
-  tfEvalDeps = { config }: let
-    depsModule = { ... }: {
-      config.terraformConfig = config;
-    };
-  in (evalModules {
-    modules = [
-      pkgsModule
-      depsModule
-      ./modules/deps.nix
-    ];
-  }).config;
   configPath = config;
-  stateModule = { config, ... }: {
-    config = let
-      state = builtins.fromJSON (builtins.readFile config.paths.stateFile);
-      mapInstance = ins: let
-        prefix = optionalString (ins.instances.mode == "managed") "data.";
-        key = "${prefix}${ins.type}.${ins.name}";
-        singular = nameValuePair key (head ins.instances);
-      in map (ins: nameValuePair "${key}${optionalString (ins ? index_key) "[${ins.index_key}]"}" ins.attributes) ins.instances;
-    in {
-      outputs = mapAttrs (k: v: v.value) state.outputs;
-      resources = filterAttrs (k: _: terraformTargets == null || elem k terraformTargets) (listToAttrs (concatMap mapInstance state.resources.instances));
-    };
-  };
-  configModule = { config, ... }: {
+  configModule = { pkgs, config, ... }: {
     options = {
       paths = {
         cwd = mkOption {
@@ -48,71 +20,39 @@
           type = types.path;
           default = config.paths.cwd + "/terraform";
         };
-        terraformDataDir = mkOption {
-          type = types.path;
-          default = config.paths.dataDir + "/tfdata";
-        };
-        stateFile = mkOption {
-          type = types.path;
-          default = config.paths.dataDir + "/state.tfstate";
-        };
         tf = mkOption {
           type = types.path;
           default = ./.;
         };
-        hcl = {
-          all = mkOption {
-            type = types.path;
-          };
-          stage = mkOption {
-            type = types.path;
-          };
-        };
-      };
-      run = mkOption {
-        type = types.attrsOf types.package;
-        default = { };
       };
       shell = mkOption {
         type = types.package;
       };
-      deps = mkOption {
-        type = types.unspecified;
-      };
     };
 
     config = {
-      deps = tfEvalDeps {
-        inherit config;
+      deps = {
+        enable = true;
+        apply.continue.run = {
+          nixFilePath = ./.;
+          #nixAttr = "deps.apply.package";
+          nixArgs = [ "--show-trace" "--arg" "config" (toString config.paths.config) ];
+        };
+      };
+      state = {
+        file = config.paths.dataDir + "/terraform.tfstate";
+      };
+      terraform = {
+        dataDir = config.paths.dataDir + "/tfdata";
+        logPath = config.paths.dataDir + "/terraform.log";
+        #environment = {
+        #  #TF_INPUT = "0";
+        #};
       };
       paths = let
         pwd = builtins.getEnv "PWD";
       in {
         cwd = mkIf (pwd != "") (mkDefault pwd);
-        hcl = {
-          all = config.lib.tf.hclDir {
-            inherit (config) hcl;
-          };
-          stage = config.lib.tf.hclDir {
-            inherit (config.deps) hcl;
-          };
-        };
-      };
-      run = {
-        apply = let
-          pkg = apply {
-            inherit config;
-            inherit (config) deps;
-            dir = config.paths.hcl.stage;
-          };
-        in nixRunWrapper "terraform" pkg;
-        terraform = let
-          pkg = terraform {
-            inherit config;
-            inherit (config) deps;
-            dir = config.paths.hcl.stage;
-          };
-        in nixRunWrapper "terraform" pkg;
       };
       shell = shell' config;
     };
@@ -120,10 +60,9 @@
   tfEval = config: (evalModules {
     modules = [
       pkgsModule
-      tfModule
       configModule
-    ] ++ toList config
-    ++ optional terraformState stateModule;
+      ./modules
+    ] ++ toList config;
 
     specialArgs = {
       inherit nixosModulesPath;
@@ -154,64 +93,18 @@
       modulesPath = nixosModulesPath;
     };
   };
-  terraform = {
-    config
-  , dir ? config.lib.tf.hclDir {
-    hcl = if deps == null then config.hcl else deps.hcl;
-  }, deps ? null
-  }: let
-    script = ''
-      set -eu
-
-      export TF_DATA_DIR="''${TF_DATA_DIR-${config.paths.terraformDataDir}}"
-      export TF_STATE_FILE="''${TF_STATE_FILE-${config.paths.stateFile}}"
-      export TF_CONFIG_DIR="${dir}"
-
-      exec ${config.terraform.package}/bin/terraform "$@"
-    '';
-  in pkgs.writeShellScriptBin "terraform" script;
-  apply = {
-    config
-  , deps
-  , dir
-  , targets ? optionals (!deps.isComplete) deps.targets
-  }: let
-    package = terraform {
-      inherit config deps dir;
-    };
-    script = ''
-      set -eux
-
-      export TF_TARGETS="${concatStringsSep " " targets}"
-    '' + optionalString (!terraformState) ''
-      ${package}/bin/terraform init
-    '' + ''
-      ${package}/bin/terraform apply "$@"
-    '' + optionalString (!deps.isComplete) ''
-      nix run --show-trace -f ${toString config.paths.tf} run.apply --arg config ${toString config.paths.config} --arg terraformState true --argstr terraformTargets "${concatStringsSep "," targets}"
-    '';
-  in pkgs.writeShellScriptBin "terraform" script;
-  commonEnv = {
-    TF_CLI_CONFIG_FILE = builtins.toFile "terraformrc" ''
-      disable_checkpoint = true
-    '';
-    TF_INPUT = 0;
-    TF_IN_AUTOMATION = 1;
-    #TF_LOG = "INFO";
-  };
   shell' = config: let
-    TF_DIR = toString config.paths.dataDir;
-    TF_STATE_FILE = toString config.paths.stateFile;
-    TF_DATA_DIR = toString config.paths.terraformDataDir;
-    shell = pkgs.mkShell (commonEnv // {
-      inherit TF_STATE_FILE TF_DIR TF_DATA_DIR;
-      TF_LOG_PATH = "${TF_DIR}/log.txt";
-      # TODO: secret input commands here
+    shell = pkgs.mkShell {
+      nativeBuildInputs = with config.runners.run; [ terraform.package apply.package ];
+
+      inherit (config.terraform.environment) TF_DATA_DIR;
+      TF_DIR = toString config.paths.dataDir;
+
       shellHook = ''
         mkdir -p $TF_DATA_DIR
         HISTFILE=$TF_DIR/history
         unset SSH_AUTH_SOCK
       '';
-    });
+    };
   in shell;
 in tfEval config

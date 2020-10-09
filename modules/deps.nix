@@ -1,4 +1,5 @@
-{ pkgs, lib, config, ... }: with config.terraformConfig.lib.tf; with builtins; with lib; let
+{ pkgs, lib, config, ... }: with config.lib.tf; with builtins; with lib; let
+  cfg = config.deps;
   dagEntryType = types.attrs;
   dagType = types.submodule ({ config, ... }: {
     options = {
@@ -45,15 +46,13 @@
     next = dagsFor (attrs // dagsFor' paths'');
   in if paths'' == [] then attrs else next;
 in {
-  options = {
-    terraformConfig = mkOption {
-      type = types.unspecified;
-      internal = true;
-    };
+  options.deps = {
+    enable = mkEnableOption "terraform/nix DAG";
 
     select = mkOption {
-      type = types.listOf dagType;
-      default = mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.terraformConfig.resources;
+      type = types.nullOr (types.listOf types.str);
+      default = null;
+      example = ''[ tfconfig.some_resource.out.hclPath ]'';
     };
     entries = mkOption {
       type = types.attrsOf dagEntryType;
@@ -75,29 +74,141 @@ in {
       type = types.listOf types.str;
       readOnly = true;
     };
+
+    apply = {
+      package = mkOption {
+        type = types.package;
+        readOnly = true;
+      };
+      doneCommand = mkOption {
+        type = types.str;
+        default = "";
+      };
+      continue = {
+        run = {
+          nixFilePath = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+          };
+          nixAttr = mkOption {
+            type = types.nullOr types.str;
+            default = "runners.run.apply.package";
+          };
+          nixArgs = mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+          };
+          binName = mkOption {
+            type = types.nullOr types.str;
+            default = "terraform-apply";
+          };
+        };
+        command = mkOption {
+          type = types.str;
+        };
+      };
+    };
   };
 
   config = let
-    alltf = filter (e: e.type == "tf") config.sorted;
-    tfs' = foldr (e: sum: if e.type == "tf" then sum ++ [ e ] else []) [] config.sorted;
-    tfs = if tfs' == [] then filter (e: e.type == "tf") config.sorted else tfs';
-    incomplete = (partition (e: e.type != "tf" || any (i: i.key == e.key) tfs) config.sorted).wrong;
+    # 1. remove any complete (or irrelevant) items from sorted
+    filterDone = e: let
+      hcl = fromHclPath e.key;
+      name = hcl.out.reference;
+      filteredNames = config.continue.input.populatedTargets;
+      filtered = config.continue.present && (filteredNames == null || elem hcl.out.reference filteredNames);
+    in e.type == "tf" && (hcl.kind == "variable" || hcl.kind == "provider" || filtered);
+    done' = partition filterDone cfg.sorted;
+    done = done'.right;
+    remaining = done'.wrong;
+    # 2. if sorted starts with drv entries, remove all until the first tf
+    remaining' = (foldl (sum: e: if e.type == "drv" && !sum.fused
+      then { fused = false; sum = [ ]; }
+      else { fused = true; sum = sum.sum ++ [ e ]; }
+    ) { fused = false; sum = [ ]; } remaining).sum;
+    # 3. if sorted starts with any tf entries, apply all targets up until the first drv
+    remaining'' = foldl (sum: e: if e.type == "tf" && sum.rest == [ ]
+      then { rest = [ ]; tfs = sum.tfs ++ [ e ]; }
+      else { rest = sum.rest ++ [ e ]; tfs = sum.tfs; }
+    ) { tfs = [ ]; rest = [ ]; } remaining';
+    tfTargets = remaining''.tfs;
+    tfIncomplete = filter (e: e.type == "tf") remaining''.rest;
+    # 4. if there are no drvs at the end, you're done. (no need to specify TF_TARGETS or continue)
+    isComplete = remaining''.rest == [ ];
+    # 5. if there are drvs at the end (and no more tfs), something is messed up?
+    broken = !isComplete && all (e: e.type == "drv") remaining''.rest;
 
-    isComplete = incomplete == [ ];
+
     toHcl = r: hcl: let
       # TODO: this provider handling is hacky and meh
       hclPath = r.out.hclPath;
       path = if hasPrefix "provider." r.out.hclPathStr then [ "provider" r.type ] else hclPath;
     in attrsFromPath path (hcl r.hcl);
     hcl = foldl combineHcl { } (
-      map (e: toHcl (fromHclPath e.key) scrubHcl) tfs
-      ++ map (e: toHcl (fromHclPath e.key) scrubHclAll) incomplete
+      map (e: toHcl (fromHclPath e.key) scrubHcl) (done ++ tfTargets)
+      ++ map (e: toHcl (fromHclPath e.key) scrubHclAll) tfIncomplete
     );
-    filterTarget = e: (fromHclPath e.key).out.dataType or null == "resource";
-    targets = map (e: (fromHclPath e.key).out.reference) (filter filterTarget tfs);
+
+    filterTarget = e: let
+      item = fromHclPath e.key;
+    in item.kind == "resource";
+    targetMap = (e: (fromHclPath e.key).out.reference);
+    targets = done ++ tfTargets;
+    targetResources = filter filterTarget targets;
+
+    select' =
+      if cfg.select == null then mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.resources
+      else map (res: dagFromString res) cfg.select;
   in {
-    entries = dagsFor (dagsFor' (map (t: t.key) config.select));
-    sorted = map ({ data, name }: data.entry) (dagTopoSort config.entries).result;
-    inherit hcl isComplete targets;
+    deps = {
+      entries = dagsFor (dagsFor' (map (t: t.key) select'));
+      sorted = map ({ data, name }: data.entry) (dagTopoSort cfg.entries).result;
+
+      inherit isComplete;
+      hcl = assert !broken; hcl;
+      targets = map targetMap targetResources;
+
+      apply = let
+        targets = optionals (!cfg.isComplete) cfg.targets;
+        # TODO: consider whether to include targets even on completion if not all resources are selected?
+      in {
+        package = pkgs.writeShellScriptBin "terraform-apply" (''
+          set -xeu
+
+          export ${config.continue.envVar}='${toJSON config.continue.output.json}'
+        '' + optionalString (!config.continue.present) ''
+          ${config.terraform.cli}/bin/terraform init
+        '' + optionalString (config.continue.present) ''
+          export TF_TARGETS="${concatStringsSep " " targets}"
+          ${config.terraform.cli}/bin/terraform apply "$@"
+        '' + (if !config.continue.present || !cfg.isComplete then cfg.apply.continue.command else cfg.apply.doneCommand));
+        continue = {
+          run.nixArgs = mkMerge [
+            (mkIf (cfg.apply.continue.run.nixFilePath != null) [ "-f" (toString cfg.apply.continue.run.nixFilePath) ])
+            (mkIf (cfg.apply.continue.run.nixAttr != null) [ cfg.apply.continue.run.nixAttr ])
+            (mkIf (cfg.apply.continue.run.binName != null) (mkAfter [ "-c" cfg.apply.continue.run.binName ''"$@"'' ]))
+          ];
+          command = mkIf (cfg.apply.continue.run.nixArgs != [ ]) ''
+            nix run ${concatStringsSep " " cfg.apply.continue.run.nixArgs}
+          '';
+        };
+      };
+    };
+    continue.output.populatedTargets = mkIf cfg.enable (
+      if config.continue.present then map targetMap targets else [ ]
+    );
+    terraform = {
+      environment = mkIf cfg.enable {
+        TF_CONFIG_DIR = mkDefault (hclDir {
+          inherit (cfg) hcl;
+        });
+      };
+    };
+    runners.run = mkIf cfg.enable {
+      apply = {
+        executable = "terraform-apply";
+        package = cfg.apply.package;
+      };
+    };
   };
 }

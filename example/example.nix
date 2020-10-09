@@ -1,10 +1,8 @@
 { config, lib, pkgs, ... }: with lib; let
-  inherit (config.lib.tf) terraformProvider terraformReference terraformOutput terraformExpr terraformSelf terraformInput terraformNixStoreUrl nixRunWrapper hclDir;
+  inherit (config.lib.tf) terraformSelf;
   inherit (config) outputs;
+  tconfig = config;
 in {
-  imports = [
-    ../modules/external.nix
-  ];
   config = {
     resources = with config.resources; {
       access_key = {
@@ -46,7 +44,9 @@ in {
         provider = "digitalocean";
         type = "image";
         dataSource = true;
-        inputs.name = "nixos-unstable-2019-12-31-b38c2839917";
+        # NOTE: must be uploaded manually because terraform doesn't support uploading images :<
+        # nix build '(with import <nixpkgs> { }; nixos { imports = [(path + "/nixos/modules/virtualisation/digital-ocean-image.nix")]; config.virtualisation.digitalOceanImage.compressionMethod = "bzip2"; }).digitalOceanImage'
+        inputs.name = "nixos-unstable-2020-09-30-84d74ae9c9cb";
       };
 
       server = {
@@ -97,6 +97,7 @@ in {
 
     variables.do_token = {
       type = "string";
+      #value.shellCommand = "pass show tokens/digitalocean"; # populate variable using https://www.passwordstore.org/
     };
 
     providers.digitalocean = {
@@ -112,17 +113,16 @@ in {
       };
     };
 
-    run = with config.resources; {
+    runners.run = with config.resources; {
       ssh = {
-        command = "ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"}";
+        command = ''${pkgs.openssh}/bin/ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"} "$@"'';
       };
     };
 
-    nixos = { config, modulesPath, ... }: {
+    nixos = with config.resources; { config, modulesPath, ... }: {
       imports = [
-        # TODO: ugh needs https://github.com/NixOS/nixpkgs/pull/75031
         (modulesPath + "/virtualisation/digital-ocean-config.nix")
-        ../modules/nixos/secrets.nix
+        ../modules/nixos
       ];
 
       config = {
@@ -131,6 +131,7 @@ in {
             text = outputs.secret.get;
           };
           external = true;
+          tf.connection = server.connection.set;
         };
 
         # terraform -> nix references
@@ -145,12 +146,7 @@ in {
         documentation.enable = false;
       };
     };
-    secrets.deploy = [
-      {
-        nixosConfig = config.nixos;
-        connection = config.resources.server.connection.set;
-      }
-    ];
+    secrets.deploy.nixosConfigs = singleton config.nixos;
   };
 
   options = {

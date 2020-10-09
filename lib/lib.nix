@@ -1,6 +1,7 @@
 { pkgs, config, lib }: with builtins; with lib; let
   terraformExpr = expr: "\${${expr}}";
   terraformSelf = attr: terraformExpr "self.${attr}";
+  terraformIdent = id: replaceStrings [ "." ] [ "_" ] id; # https://www.terraform.io/docs/configuration/syntax.html#identifiers
   # get all input context/dependencies for a derivation
   # https://github.com/NixOS/nix/issues/1245#issuecomment-401642781
   storeDirRe = replaceStrings [ "." ] [ "\\." ] builtins.storeDir;
@@ -58,20 +59,23 @@
   fromHclPath = p: let
     path = if isString p then splitString "." p else p;
     name = last path;
+    kind = head path;
     type = {
       resource = "resources";
       data = "resources";
       provider = "providers";
       output = "outputs";
       variable = "variables";
-    }.${head path};
+    }.${kind};
     cfg = config.${type};
     named = cfg.${name};
     nameOf = r: let
       alias = if r.alias != null then r.alias else r.type;
     in r.name or alias;
     find = findFirst (r: nameOf r == name) (throw "${toString p} not found") (attrValues cfg);
-  in if cfg ? ${name} && nameOf named == name then named else find;
+  in (if cfg ? ${name} && nameOf named == name then named else find) // {
+    inherit kind;
+  };
 
   combineHcl = a: b: recursiveUpdate a b // optionalAttrs (a ? provider || b ? provider) {
     provider = let
@@ -105,7 +109,7 @@
     hcl = toJSON hcl;
 
     buildCommand = ''
-     mkdir -p $out
+      mkdir -p $out
       install -Dm0644 $hclPath $out/$name
     '';
   };
@@ -141,7 +145,7 @@ in rec {
   inherit terraformContext terraformContextFor terraformContextForString terraformContextForDrv terraformContextFromDrv removeTerraformContext;
   inherit fromHclPath combineHcl scrubHcl scrubHclAll hclDir;
 
-  inherit terraformExpr terraformSelf;
+  inherit terraformExpr terraformSelf terraformIdent;
 
   inherit (dag) dagTopoSort dagEntryAfter dagEntryBefore dagEntryAnywhere;
   inherit (run) nixRunWrapper;

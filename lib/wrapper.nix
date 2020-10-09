@@ -11,6 +11,7 @@
         set -- "$@" "$TF_CONFIG_DIR"
         ;;
     esac
+    export TF_CLI_ARGS_import="''${TF_CLI_ARGS_import-} -config=$TF_CONFIG_DIR"
   fi
   if [[ -n ''${TF_DATA_DIR-} ]]; then
     mkdir -p "$TF_DATA_DIR"
