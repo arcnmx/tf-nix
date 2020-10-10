@@ -102,6 +102,16 @@
         }));
         default = null;
       };
+      cname = mkOption {
+        type = types.nullOr (types.submodule ({ config, ... }: {
+          options = {
+            target = mkOption {
+              type = types.str;
+            };
+          };
+        }));
+        default = null;
+      };
       srv = mkOption {
         type = types.nullOr (types.submodule ({ config, ... }: {
           options = {
@@ -175,6 +185,7 @@
             (mapNullable (_: "SRV") config.srv)
             (mapNullable (_: "A") config.a)
             (mapNullable (_: "AAAA") config.aaaa)
+            (mapNullable (_: "CNAME") config.cname)
           ];
         in if length types == 1 then mkOptionDefault (head types)
           else throw "invalid DNS record type";
@@ -211,6 +222,8 @@
               value = config.a.address;
             } else if config.out.type == "AAAA" then {
               value = config.aaaa.address;
+            } else if config.out.type == "CNAME" then {
+              value = config.cname.target;
             } else throw "unknown DNS record ${config.out.type}");
           };
         }.${config.out.zone.provider.type} or (throw "Unknown provider ${config.out.zone.provider.type}");

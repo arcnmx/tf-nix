@@ -227,6 +227,18 @@
             command = mkOption {
               type = types.lines;
             };
+            working_dir = mkOption {
+              type = types.nullOr types.path;
+              default = null;
+            };
+            environment = mkOption {
+              type = types.attrsOf types.str;
+              default = { };
+            };
+            interpreter = mkOption {
+              type = types.listOf types.str;
+              default = [ ];
+            };
             hcl = mkOption {
               type = types.attrsOf types.unspecified;
               readOnly = true;
@@ -235,6 +247,12 @@
 
           config.hcl = {
             inherit (config) command;
+          } // optionalAttrs (config.working_dir != null) {
+            inherit (config) working_dir;
+          } // optionalAttrs (config.environment != { }) {
+            inherit (config) environment;
+          } // optionalAttrs (config.interpreter != [ ]) {
+            inherit (config) interpreter;
           };
         }));
         default = null;
@@ -333,6 +351,11 @@
         type = types.attrsOf types.unspecified;
         readOnly = true;
       };
+      nixStoreSshOpts = mkOption {
+        type = types.str;
+        readOnly = true;
+        description = "NIX_SSHOPTS";
+      };
       nixStoreUrl = mkOption {
         type = types.str;
         readOnly = true;
@@ -355,6 +378,10 @@
       };
       host = mkOption {
         type = types.str;
+      };
+      port = mkOption {
+        type = types.nullOr types.port;
+        default = null;
       };
       # ssh options
       ssh = {
@@ -442,7 +469,7 @@
 
     config = {
       hcl = filterAttrs (_: v: v != null) {
-        inherit (config) type user timeout host;
+        inherit (config) type user timeout host port;
         script_path = config.scriptPath;
         private_key = config.ssh.privateKey;
         host_key = config.ssh.hostKey;
@@ -463,16 +490,21 @@
       };
       set = let
         attrs = {
-          inherit (config) ssh winrm type user timeout scriptPath host;
+          inherit (config) ssh winrm type user timeout scriptPath host port;
         };
         attrs' = filterAttrs (_: v: v != null) attrs;
         selfRef = tf.terraformContext false self.out.hclPathStr null + "\${${self.out.reference}.";
-        mapSelf = v: if isString v then replaceStrings [ "\${self." ] [ selfRef ] v else v;
+        selfPrefix = "\${self.";
+        mapSelf = v: if isString v && hasInfix selfPrefix v then replaceStrings [ selfPrefix ] [ selfRef ] v else v;
       in mapAttrs (_: mapSelf) attrs';
+      nixStoreSshOpts =
+        optionalString (config.port != null) "-p${toString config.port}";
       nixStoreUrl = let
         user = if config.user == null then "root" else config.user;
         sshKey = optionalString (config.ssh.privateKeyFile != null) "?ssh-key=${config.ssh.privateKeyFile}";
-      in "ssh://${user}@${config.host}${sshKey}";
+        # Waiting on fix for: https://github.com/NixOS/nix/issues/1994
+        port = optionalString (/*config.port != null*/false) ":${toString config.port}";
+      in "ssh://${user}@${config.host}${port}${sshKey}";
     };
   });
   providerType = types.submodule ({ name, config, ... }: {

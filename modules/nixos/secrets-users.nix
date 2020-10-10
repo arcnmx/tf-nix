@@ -1,4 +1,4 @@
-{ config, lib, ... }: with lib; let
+{ options, config, lib, ... }: with lib; let
   cfg = config.secrets;
 in {
   options.secrets.userConfigs = mkOption {
