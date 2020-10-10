@@ -4,7 +4,7 @@
     ./dns.nix
     ./terraform.nix
     ./state.nix
-    ./secrets-deploy.nix
+    ./deploy.nix
     ./run.nix
     ./deps.nix
     ./continue.nix

@@ -67,32 +67,6 @@ in {
           };
         };
       };
-
-      server_nix_copy = {
-        provider = "null";
-        type = "resource";
-        # intra-terraform reference
-        connection = server.connection.set;
-        inputs.triggers = {
-          # TODO: pull in all command strings automatically!
-          remote = server_nix_copy.connection.nixStoreUrl;
-          system = config.nixos.system.build.toplevel;
-        };
-
-        # nix -> terraform reference
-        provisioners = [ {
-          # first check that remote is reachable (terraform includes more delay/retry logic than nix does)
-          remote-exec.command = "true";
-        } {
-          # NOTE: `server.connection.nixStoreUrl` is incorrect here because it would contain references to `${self}` instead
-          local-exec.command = "nix copy --substitute --to ${server_nix_copy.connection.nixStoreUrl} ${config.nixos.system.build.toplevel}";
-        } {
-          remote-exec.inline = [
-            "nix-env -p /nix/var/nix/profiles/system --set ${config.nixos.system.build.toplevel}"
-            "${config.nixos.system.build.toplevel}/bin/switch-to-configuration switch"
-          ];
-        } ];
-      };
     };
 
     variables.do_token = {
@@ -131,7 +105,6 @@ in {
             text = outputs.secret.get;
           };
           external = true;
-          tf.connection = server.connection.set;
         };
 
         # terraform -> nix references
@@ -146,7 +119,13 @@ in {
         documentation.enable = false;
       };
     };
-    secrets.deploy.nixosConfigs = singleton config.nixos;
+    deploy.systems.system = with config.resources; {
+      nixosConfig = config.nixos;
+      connection = server.connection.set;
+      # if server gets replaced, make sure the deployment starts over
+      triggers.copy.server = server.refAttr "id";
+      triggers.secrets.server = server.refAttr "id";
+    };
   };
 
   options = {
