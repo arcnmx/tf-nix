@@ -864,7 +864,7 @@ in {
         default = null;
       };
       environment = mkOption {
-        type = types.attrsOf types.unspecified;
+        type = types.attrsOf (types.separatedString " ");
         default = { };
       };
     };
@@ -910,17 +910,20 @@ in {
         mapAttrs' (_: var:
           nameValuePair "TF_VAR_${var.name}" (mkOptionDefault "$(${var.value.shellCommand})")
         ) (filterAttrs (_: var: var.value.shellCommand != null) config.variables) // {
-          TF_CONFIG_DIR = mkOptionDefault (tf.hclDir {
+          TF_CONFIG_DIR = mkOptionDefault "${tf.hclDir {
             inherit hcl;
-          });
+          }}";
           TF_LOG_PATH = mkIf (config.terraform.logPath != null) (mkOptionDefault (toString config.terraform.logPath));
           TF_DATA_DIR = mkIf (config.terraform.dataDir != null) (mkOptionDefault (toString config.terraform.dataDir));
           TF_STATE_FILE = mkIf (config.state.file != null) (mkOptionDefault (toString config.state.file));
-          TF_CLI_CONFIG_FILE = mkOptionDefault (pkgs.writeText "terraformrc" ''
+          TF_CLI_CONFIG_FILE = mkOptionDefault "${pkgs.writeText "terraformrc" ''
             disable_checkpoint = true
-          '');
-          TF_CLI_ARGS_refresh = mkOptionDefault "-compact-warnings";
-          TF_CLI_ARGS_apply = mkOptionDefault "-compact-warnings -refresh=${if config.terraform.refreshOnApply then "true" else "false"}${optionalString config.terraform.autoApprove " -auto-approve"}";
+          ''}";
+          TF_CLI_ARGS_refresh = "-compact-warnings";
+          TF_CLI_ARGS_apply = mkMerge ([
+            "-compact-warnings"
+            "-refresh=${if config.terraform.refreshOnApply then "true" else "false"}"
+          ] ++ optional config.terraform.autoApprove "-auto-approve");
           TF_IN_AUTOMATION = mkOptionDefault "1";
           TF_LOG = mkOptionDefault config.terraform.logLevel;
         };

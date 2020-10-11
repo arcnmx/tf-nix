@@ -209,9 +209,9 @@ in {
     );
     terraform = {
       environment = mkIf cfg.enable {
-        TF_CONFIG_DIR = mkDefault (hclDir {
+        TF_CONFIG_DIR = mkDefault "${hclDir {
           inherit (cfg) hcl;
-        });
+        }}";
       };
     };
     runners.run = mkIf cfg.enable {
