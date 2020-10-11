@@ -1,19 +1,13 @@
 isNixos: { pkgs, config, lib, ... }: with lib; let
   cfg = config.secrets;
-  defaultOwner = if isNixos then "root" else config.home.username;
-  defaultGroup = if isNixos then "keys" else "users";
   activationScript = concatStringsSep "\n" (mapAttrsToList (_: f: let
-      dir = builtins.dirOf f.path;
-      chown =
-        optionalString (f.owner != cfg.owner) "${f.owner}"
-        + optionalString (f.group != cfg.group) ":${f.group}";
-      source = if f.text != null
-        then builtins.toFile f.fileName f.text
-        else f.source;
-    in "${pkgs.coreutils}/bin/install -dm0755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${f.out.root}" +
-      "\n${pkgs.coreutils}/bin/install -dm7755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${dir}" +
-      optionalString (!f.external) "\n${pkgs.coreutils}/bin/install -m${f.mode} -o ${f.owner} -g ${f.group} ${source} ${f.path}" +
-      optionalString (f.external) "\n${pkgs.coreutils}/bin/chown ${f.owner}:${f.group} ${f.path}"
+      source = if f.source != null
+        then f.source
+        else builtins.toFile f.fileName f.text;
+    in "${pkgs.coreutils}/bin/install -dm0755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${toString f.out.root}" +
+      "\n${pkgs.coreutils}/bin/install -dm7755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${toString f.out.dir}" +
+      optionalString (!f.external) "\n${pkgs.coreutils}/bin/install -m${f.mode} -o ${f.owner} -g ${f.group} ${source} ${toString f.path}" +
+      optionalString (f.external) "\n${pkgs.coreutils}/bin/chown ${f.owner}:${f.group} ${toString f.path}"
     ) config.secrets.files);
   fileType = types.submodule ({ name, config, ... }: {
     options = {
@@ -95,12 +89,12 @@ isNixos: { pkgs, config, lib, ... }: with lib; let
         (mkIf (config.text == null && builtins ? hashFile)
           (mkDefault fileHash))
       ];
-      path = mkOptionDefault "${config.out.dir}/${config.fileName}";
+      path = mkOptionDefault (toString (config.out.dir + "/${config.fileName}"));
       out = {
         root = mkOptionDefault (if config.persistent then cfg.persistentRoot else cfg.root);
         rootOwner = mkOptionDefault cfg.owner;
         rootGroup = mkOptionDefault cfg.group;
-        dir = mkOptionDefault "${config.out.root}/${builtins.unsafeDiscardStringContext config.sha256}";
+        dir = mkOptionDefault (config.out.root + "/${builtins.unsafeDiscardStringContext config.sha256}");
         checkHash = # TODO: add this to assertions
           if config.source != null && builtins.pathExists config.source then config.sha256 == fileHash
           else if config.text != null then config.sha256 == textHash
@@ -108,7 +102,7 @@ isNixos: { pkgs, config, lib, ... }: with lib; let
         set = {
           inherit (config) text source sha256 persistent external owner group mode fileName path;
           out = {
-            inherit (config.out) root rootOwner rootGroup;
+            inherit (config.out) root dir rootOwner rootGroup;
           };
         };
       };
@@ -135,14 +129,14 @@ in {
     root = mkOption {
       type = types.path;
       default = if isNixos
-        then "/var/run/arc/secrets"
-        else "${config.xdg.runtimeDir}/arc/secrets"; # TODO: use a /tmp dir or other tmpfs instead?
+        then /var/run/arc/secrets
+        else /dev/shm + "/arc-${config.home.username}/secrets";
     };
     persistentRoot = mkOption {
       type = types.path;
       default = if isNixos
-        then "/var/lib/arc/secrets"
-        else "${config.xdg.cacheHome}/arc/secrets";
+        then /var/lib/arc/secrets
+        else config.xdg.cacheHome + "/arc/secrets";
     };
     persistent = mkOption {
       type = types.bool;

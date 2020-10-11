@@ -105,32 +105,30 @@
           provisioners = if config.isRemote then [ {
             type = "remote-exec";
             remote-exec.inline = [
-              "install -dm0755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${file.out.root}"
-              "install -dm7755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${builtins.dirOf file.path}"
+              "install -dm0755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${toString file.out.root}"
+              "install -dm7755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${toString file.out.dir}"
             ];
           } {
             type = "file";
             file = {
               inherit source;
-              destination = file.path;
+              destination = toString file.path;
             };
           } {
             type = "remote-exec";
             remote-exec.inline = [
-              "chown ${file.out.rootOwner}:${file.out.rootGroup} ${file.path}"
-              "chown ${file.owner}:${file.group} ${file.path}"
-              "chmod ${file.mode} ${file.path}"
+              "chown ${file.out.rootOwner}:${file.out.rootGroup} ${toString file.path}"
+              "chown ${file.owner}:${file.group} ${toString file.path}"
+              "chmod ${file.mode} ${toString file.path}"
             ];
           } ] else [ {
             type = "local-exec";
             local-exec = {
               inherit interpreter;
-              command = let
-                source = if file.source != null then file.source else tf.resources."${name}_file".refAttr "filename";
-              in concatStringsSep " && " [
-                "install -dm0755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${file.out.root}"
-                "install -dm7755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${builtins.dirOf file.path}"
-                "install -o ${file.out.rootOwner} -g ${file.out.rootGroup} -m ${file.mode} ${toString source} ${file.path}"
+              command = concatStringsSep " && " [
+                "install -dm0755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${toString file.out.root}"
+                "install -dm7755 -o ${file.out.rootOwner} -g ${file.out.rootGroup} ${toString file.out.dir}"
+                "install -o ${file.out.rootOwner} -g ${file.out.rootGroup} -m ${file.mode} ${source} ${toString file.path}"
               ];
             };
           } {
@@ -138,7 +136,7 @@
             local-exec = {
               inherit interpreter;
               command = concatStringsSep "; " [
-                "chown ${file.owner}:${file.group} ${file.path}"
+                "chown ${file.owner}:${file.group} ${toString file.path}"
                 "true"
               ];
             };
@@ -149,7 +147,7 @@
           inputs = {
             filename = "${toString config.secrets.cacheDir}/${name}.secret";
             sensitive_content = file.text;
-            file_permission = "0700";
+            file_permission = "0600";
           };
         })) config.secrets.files)) // {
         "${config.out.resourceName}_copy" = {
