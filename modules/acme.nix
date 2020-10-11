@@ -23,9 +23,15 @@ in {
         default = "acme_account";
       };
     };
-    providers = mkOption {
-      type = types.attrsOf (types.attrsOf types.unspecified);
-      default = { };
+    challenge = {
+      defaultProvider = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      configs = mkOption {
+        type = types.attrsOf (types.attrsOf types.unspecified);
+        default = { };
+      };
     };
     certs = mkOption {
       type = types.attrsOf (types.submodule ({ name, config, ... }: {
@@ -55,7 +61,7 @@ in {
             };
             config = mkOption {
               type = types.attrsOf types.unspecified;
-              default = cfg.providers.${config.challenge.provider} or { };
+              default = cfg.challenge.configs.${config.challenge.provider} or { };
             };
           };
           out = {
@@ -111,6 +117,7 @@ in {
           };
         };
         config = {
+          challenge.provider = mkIf (cfg.challenge.defaultProvider != null) cfg.challenge.defaultProvider;
           out = {
             commonName = head config.dnsNames;
             subjectAlternateNames = tail config.dnsNames;
