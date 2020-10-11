@@ -183,7 +183,7 @@ in {
         # TODO: consider whether to include targets even on completion if not all resources are selected?
       in {
         package = pkgs.writeShellScriptBin "terraform-apply" (''
-          set -xeu
+          set -eu
 
           export ${config.continue.envVar}='${toJSON config.continue.output.json}'
         '' + optionalString (!config.continue.present) ''

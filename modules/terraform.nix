@@ -901,7 +901,7 @@ in {
       cli = let
         vars = config.terraform.environment;
       in pkgs.writeShellScriptBin "terraform" ''
-        set -xeu
+        set -eu
         ${concatStringsSep "\n" (mapAttrsToList (k: v: ''export ${k}="${v}"'') vars)}
 
         exec ${config.terraform.package}/bin/terraform "$@"
