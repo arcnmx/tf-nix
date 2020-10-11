@@ -49,7 +49,7 @@
       create = mkIf (config.cloudflare.id != null) (mkDefault false);
       out = {
         resourceName = let
-          tld = replaceStrings [ "-" "." ] [ "_" "_" ] config.tld;
+          tld = tfconfig.lib.tf.terraformIdent config.tld;
         in mkOptionDefault "${config.provider.type}_${tld}";
         resource = tfconfig.resources.${config.out.resourceName};
         set = {

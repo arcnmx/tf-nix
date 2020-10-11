@@ -122,7 +122,7 @@ in {
             commonName = head config.dnsNames;
             subjectAlternateNames = tail config.dnsNames;
             resourceName = let
-              name = replaceStrings [ "-" "." ] [ "_" "_" ] config.name;
+              name = config'.lib.tf.terraformIdent config.name;
             in mkOptionDefault "${cfg.account.provider.type}_${name}";
             resource = config'.resources.${config.out.resourceName};
             importFullchainPem = config.out.resource.importAttr "certificate_pem" + config.out.resource.importAttr "issuer_pem";
