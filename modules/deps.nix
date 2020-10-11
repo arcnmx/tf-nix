@@ -49,10 +49,17 @@ in {
   options.deps = {
     enable = mkEnableOption "terraform/nix DAG";
 
-    select = mkOption {
-      type = types.nullOr (types.listOf types.str);
-      default = null;
-      example = ''[ tfconfig.some_resource.out.hclPath ]'';
+    select = {
+      hclPaths = mkOption {
+        type = types.nullOr (types.listOf types.str);
+        default = null;
+        example = ''[ tfconfig.some_resource.out.hclPath ]'';
+      };
+      allProviders = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Deleted resources may require unused providers to be present in the config.";
+      };
     };
     entries = mkOption {
       type = types.attrsOf dagEntryType;
@@ -157,8 +164,11 @@ in {
     targetResources = filter filterTarget targets;
 
     select' =
-      if cfg.select == null then mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.resources
-      else map (res: dagFromString res) cfg.select;
+      (optionals cfg.select.allProviders (mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.providers))
+      ++ (if cfg.select.hclPaths == null
+        then mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.resources
+        else map (res: dagFromString res) cfg.select.hclPaths
+      );
   in {
     deps = {
       entries = dagsFor (dagsFor' (map (t: t.key) select'));
