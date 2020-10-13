@@ -60,6 +60,11 @@ in {
         default = false;
         description = "Deleted resources may require unused providers to be present in the config.";
       };
+      allOutputs = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Export all outputs even if they're unused";
+      };
     };
     entries = mkOption {
       type = types.attrsOf dagEntryType;
@@ -165,6 +170,7 @@ in {
 
     select' =
       (optionals cfg.select.allProviders (mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.providers))
+      ++ (optionals cfg.select.allOutputs (mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.outputs))
       ++ (if cfg.select.hclPaths == null
         then mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.resources
         else map (res: dagFromString res) cfg.select.hclPaths
