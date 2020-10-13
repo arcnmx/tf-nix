@@ -949,7 +949,10 @@ in {
         vars = config.terraform.environment;
       in pkgs.writeShellScriptBin "terraform" ''
         set -eu
-        ${concatStringsSep "\n" (mapAttrsToList (k: v: ''export ${k}="${v}"'') vars)}
+        ${concatStringsSep "\n" (mapAttrsToList (k: v: ''
+          ${k}="${v}"
+          export ${k}
+        '') vars)}
 
         exec ${config.terraform.package}/bin/terraform "$@"
       '';
