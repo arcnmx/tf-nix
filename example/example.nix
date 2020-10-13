@@ -87,12 +87,6 @@ in {
       };
     };
 
-    runners.run = with config.resources; {
-      ssh = {
-        command = ''${pkgs.openssh}/bin/ssh -i ${access_file.getAttr "filename"} root@${server.getAttr "ipv4_address"} "$@"'';
-      };
-    };
-
     nixos = with config.resources; { config, modulesPath, ... }: {
       imports = [
         (modulesPath + "/virtualisation/digital-ocean-config.nix")

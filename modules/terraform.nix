@@ -351,11 +351,6 @@
         type = types.attrsOf types.unspecified;
         readOnly = true;
       };
-      nixStoreSshOpts = mkOption {
-        type = types.str;
-        readOnly = true;
-        description = "NIX_SSHOPTS";
-      };
       nixStoreUrl = mkOption {
         type = types.str;
         readOnly = true;
@@ -465,6 +460,27 @@
         type = types.attrsOf types.unspecified;
         readOnly = true;
       };
+      out = {
+        ssh = {
+          opts = mkOption {
+            type = types.attrsOf types.str;
+            readOnly = true;
+          };
+          nixStoreOpts = mkOption {
+            type = types.str;
+            readOnly = true;
+            description = "NIX_SSHOPTS";
+          };
+          cliArgs = mkOption {
+            type = types.listOf types.str;
+            readOnly = true;
+          };
+          destination = mkOption {
+            type = types.str;
+            readOnly = true;
+          };
+        };
+      };
     };
 
     config = {
@@ -496,15 +512,37 @@
         selfRef = tf.terraformContext false self.out.hclPathStr null + "\${${self.out.reference}.";
         selfPrefix = "\${self.";
         mapSelf = v: if isString v && hasInfix selfPrefix v then replaceStrings [ selfPrefix ] [ selfRef ] v else v;
-      in mapAttrs (_: mapSelf) attrs';
-      nixStoreSshOpts =
-        optionalString (config.port != null) "-p${toString config.port}";
+      in mapAttrsRecursive (_: mapSelf) attrs';
       nixStoreUrl = let
-        user = if config.user == null then "root" else config.user;
         sshKey = optionalString (config.ssh.privateKeyFile != null) "?ssh-key=${config.ssh.privateKeyFile}";
         # Waiting on fix for: https://github.com/NixOS/nix/issues/1994
         port = optionalString (/*config.port != null*/false) ":${toString config.port}";
-      in "ssh://${user}@${config.host}${port}${sshKey}";
+      in "ssh://${config.out.ssh.destination}${port}${sshKey}";
+      out.ssh = let
+        bastionDestination =
+          optionalString (config.ssh.bastion.user != null) "${config.ssh.bastion.user}@"
+          + config.ssh.bastion.host
+          + optionalString (config.ssh.bastion.port != null) ":${toString config.ssh.bastion.port}";
+      in {
+        nixStoreOpts = concatStringsSep " " config.out.ssh.cliArgs;
+        opts = {
+          UpdateHostKeys = "no";
+          User = if config.user == null then "root" else config.user;
+          # TODO: cert and hostkey
+        } // optionalAttrs (config.ssh.bastion.host != null) {
+          ProxyJump = bastionDestination;
+        } // optionalAttrs (config.port != null) {
+          Port = toString config.port;
+        } // optionalAttrs (config.ssh.privateKeyFile != null) {
+          IdentityFile = config.ssh.privateKeyFile;
+        };
+        cliArgs =
+          [ "-q" "-o" "UpdateHostKeys=no" ]
+          ++ optionals (config.ssh.bastion.host != null) [ "-J" bastionDestination ]
+          ++ optionals (config.port != null) [ "-p" (toString config.port) ]
+          ++ optionals (config.ssh.privateKeyFile != null) [ "-i" config.ssh.privateKeyFile ];
+        destination = "${if config.user == null then "root" else config.user}@${config.host}";
+      };
     };
   });
   providerType = types.submodule ({ name, config, ... }: {
@@ -654,7 +692,7 @@
         default = [ ];
       };
       value = mkOption {
-        type = types.str;
+        type = types.unspecified;
       };
       name = mkOption {
         type = types.str;
@@ -679,7 +717,12 @@
         };
       };
       get = mkOption {
-        type = types.str;
+        type = types.unspecified;
+        readOnly = true;
+      };
+      import = mkOption {
+        type = types.unspecified;
+        readOnly = true;
       };
     };
 
@@ -702,6 +745,10 @@
         ctx = tf.terraformContext exists config.out.hclPathStr null;
         exists = tconfig.state.outputs ? ${config.out.reference};
       in mkOptionDefault (ctx + optionalString exists tconfig.state.outputs.${config.out.reference});
+      import = mkOptionDefault (let
+        ctx = tf.terraformContext exists config.out.hclPathStr null;
+        exists = tconfig.state.outputs ? ${config.out.reference};
+      in if exists then tconfig.state.outputs.${config.out.reference} else throw "imported output ${config.out.reference} not found");
     };
   });
   moduleType = types.submodule ({ name, config, ... }: {

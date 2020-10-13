@@ -1,4 +1,4 @@
-{ config, lib, ... }: with lib; let
+{ pkgs, config, lib, ... }: with lib; let
   tf = config;
   cfg = config.deploy;
   interpreter = mkIf (!cfg.isRoot) [ "sudo" "bash" "-c" ];
@@ -162,7 +162,7 @@
           } {
             type = "local-exec";
             local-exec = {
-              environment.NIX_SSHOPTS = config.connection.nixStoreSshOpts;
+              environment.NIX_SSHOPTS = config.connection.out.ssh.nixStoreOpts;
               command = "nix copy --substitute --to ${config.connection.nixStoreUrl} ${config.system}";
             };
           } ];
@@ -213,5 +213,23 @@ in {
 
   config = {
     resources = mkMerge (mapAttrsToList (_: system: system.out.setResources) cfg.systems);
+    outputs = mkMerge (mapAttrsToList (_: system: mkIf system.enable {
+      "${system.out.resourceName}_ssh" = {
+        value = {
+          inherit (system.connection.out.ssh) destination cliArgs opts;
+          inherit (system.connection) nixStoreUrl host port;
+        };
+        sensitive = true;
+      };
+    }) cfg.systems);
+    runners.run = mkMerge (mapAttrsToList (_: system: mkIf system.enable {
+      "${system.name}-ssh" = {
+        command = let
+          ssh = tf.outputs."${system.out.resourceName}_ssh".import;
+        in ''
+          exec ${pkgs.openssh}/bin/ssh ${escapeShellArgs ssh.cliArgs} ${escapeShellArg ssh.destination} "$@"
+        '';
+      };
+    }) cfg.systems);
   };
 }
