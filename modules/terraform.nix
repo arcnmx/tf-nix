@@ -106,6 +106,20 @@
         default = 1;
       };
       # TODO: for_each
+      lifecycle = {
+        createBeforeDestroy = mkOption {
+          type = types.bool;
+          default = true;
+        };
+        ignoreChanges = mkOption {
+          type = types.either (types.enum [ "all" ]) (types.listOf types.str);
+          default = [ ];
+        };
+        preventDestroy = mkOption {
+          type = types.bool;
+          default = false;
+        };
+      };
       connection = mkOption {
         type = types.nullOr (connectionType config);
         default = null;
@@ -182,6 +196,14 @@
         timeouts = config.timeouts.hcl;
       } // optionalAttrs (!config.provider.isDefault || config.provider.out.provider != null) {
         provider = config.provider.ref;
+      } // optionalAttrs (config.lifecycle.createBeforeDestroy || config.lifecycle.preventDestroy || config.lifecycle.ignoreChanges != [ ]) {
+        lifecycle = optionalAttrs (config.lifecycle.createBeforeDestroy) {
+          create_before_destroy = true;
+        } // optionalAttrs (config.lifecycle.preventDestroy) {
+          prevent_destroy = true;
+        } // optionalAttrs (config.lifecycle.ignoreChanges != [ ]) {
+          ignore_changes = config.lifecycle.ignoreChanges;
+        };
       };
       getAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
