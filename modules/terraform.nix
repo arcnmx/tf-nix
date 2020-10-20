@@ -1039,6 +1039,7 @@ in {
             disable_checkpoint = true
           ''}";
           TF_CLI_ARGS_refresh = "-compact-warnings";
+          TF_CLI_ARGS_state_replace_provider = "-auto-approve";
           TF_CLI_ARGS_apply = mkMerge ([
             "-compact-warnings"
             "-refresh=${if config.terraform.refreshOnApply then "true" else "false"}"
