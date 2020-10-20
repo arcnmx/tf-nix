@@ -3,6 +3,9 @@
   cfg = config.acme;
 in {
   options.acme = {
+    enable = mkOption {
+      type = types.bool;
+    };
     account = {
       accountKeyPem = mkOption {
         type = types.str;
@@ -154,12 +157,21 @@ in {
     };
   };
   config = {
-    acme.account = {
-      accountKeyPem = mkIf cfg.account.register (mkOptionDefault
-        (config.resources.${cfg.account.resourceName}.refAttr "account_key_pem")
-      );
+    acme = {
+      enable = mkOptionDefault (cfg.certs != { } || cfg.account.register);
+      account = mkIf cfg.enable {
+        accountKeyPem = mkIf cfg.account.register (mkOptionDefault
+          (config.resources.${cfg.account.resourceName}.refAttr "account_key_pem")
+        );
+      };
     };
-    resources = mkMerge [
+    providers = mkIf cfg.enable {
+      ${cfg.account.provider.out.name} = {
+        type = mkDefault cfg.account.provider.type;
+        inputs.server_url = mkDefault "https://acme-v02.api.letsencrypt.org/directory";
+      };
+    };
+    resources = mkIf cfg.enable (mkMerge [
       (mapAttrs' (_: value: nameValuePair value.out.resourceName value.out.set) cfg.certs)
       (mkIf cfg.account.register {
         ${cfg.account.resourceName} = {
@@ -171,7 +183,7 @@ in {
           };
         };
       })
-    ];
+    ]);
   };
   # TODO: all the rest
 }
