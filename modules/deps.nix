@@ -159,7 +159,7 @@ in {
     hcl = foldl combineHcl { } (
       map (e: toHcl (fromHclPath e.key) scrubHcl) (done ++ tfTargets)
       ++ map (e: toHcl (fromHclPath e.key) scrubHclAll) tfIncomplete
-    );
+    ) // optionalAttrs (config.hcl.terraform != { }) { inherit (config.hcl) terraform; };
 
     filterTarget = e: let
       item = fromHclPath e.key;

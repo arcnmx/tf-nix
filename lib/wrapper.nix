@@ -24,7 +24,7 @@
   if [[ -n ''${TF_STATE_FILE-} ]]; then
     ${concatMapStringsSep "\n" (k:
       "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -state=$TF_STATE_FILE\""
-    ) ([ "plan" "apply" "output" "destroy" "refresh" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" ])}
+    ) ([ "plan" "apply" "output" "destroy" "refresh" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" "replace_provider" ])}
   fi
   exec ${terraform}/bin/terraform "$@"
 ''

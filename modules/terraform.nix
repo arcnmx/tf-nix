@@ -33,6 +33,10 @@
         readOnly = true;
       };
       out = {
+        name = mkOption {
+          type = types.str;
+          readOnly = true;
+        };
         provider = mkOption {
           type = types.unspecified;
           readOnly = true;
@@ -49,6 +53,7 @@
     };
     config = {
       out = {
+        name = if config.alias != null then config.alias else config.type;
         provider = let
           default = if !config.isDefault
             then throw "provider ${config.reference} not found"
@@ -581,6 +586,14 @@
         type = types.attrsOf types.unspecified;
         default = { };
       };
+      source = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      version = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
       hcl = mkOption {
         type = types.attrsOf types.unspecified;
         readOnly = true;
@@ -609,6 +622,39 @@
         reference = "${config.type}${optionalString (config.alias != null) ".${config.alias}"}";
         hclPath = [ "provider" config.type ] ++ optional (config.alias != null) config.alias;
         hclPathStr = concatStringsSep "." config.out.hclPath;
+      };
+    };
+  });
+  requiredProviderType = types.submodule ({ name, config, ... }: {
+    options = {
+      type = mkOption {
+        type = types.str;
+        default = name;
+        readOnly = true;
+      };
+      source = mkOption {
+        type = types.nullOr types.str;
+        default =
+          if tconfig.terraform.version == "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.provider-source-address
+          then tconfig.terraform.packageUnwrapped.plugins.${config.type}.provider-source-address
+          else "nixpkgs/${config.type}";
+      };
+      version = mkOption {
+        type = types.nullOr types.str;
+        default =
+          if tconfig.terraform.version == "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.version
+          then tconfig.terraform.packageUnwrapped.plugins.${config.type}.version
+          else null;
+      };
+      hcl = mkOption {
+        type = types.attrsOf types.unspecified;
+        readOnly = true;
+      };
+    };
+    config = {
+      hcl = {
+        source = mkIf (config.source != null) config.source;
+        version = mkIf (config.version != null) config.version;
       };
     };
   });
@@ -893,11 +939,11 @@ in {
         type = types.enum [ "0.11" "0.12" "0.13" ];
         default = "0.12";
       };
-      googleBeta = mkOption {
-        type = types.bool;
-        default = false;
-      };
       package = mkOption {
+        type = types.package;
+        readOnly = true;
+      };
+      packageUnwrapped = mkOption {
         type = types.package;
         readOnly = true;
       };
@@ -909,8 +955,9 @@ in {
         type = types.unspecified;
         default = terraform: pkgs.callPackage ../lib/wrapper.nix { inherit terraform; };
       };
-      providers = mkOption {
-        type = types.listOf types.str;
+      requiredProviders = mkOption {
+        type = types.attrsOf requiredProviderType;
+        default = { };
       };
       refreshOnApply = mkOption {
         type = types.bool;
@@ -951,21 +998,21 @@ in {
 
   config = {
     terraform = {
+      packageUnwrapped = {
+        "0.11" = pkgs.terraform_0_11;
+        "0.12" = pkgs.terraform_0_12;
+        "0.13" = pkgs.terraform_0_13;
+      }.${config.terraform.version};
       package = let
-        tf = {
-          "0.11" = pkgs.terraform_0_11;
-          "0.12" = pkgs.terraform_0_12;
-          "0.13" = pkgs.terraform_0_13;
-        }.${config.terraform.version};
-        translateProvider = provider: (optionalAttrs config.terraform.googleBeta {
-          google = "google-beta";
-        }).${provider} or provider;
-        mapProvider = p: provider: p.${translateProvider provider};
-        terraform = tf.withPlugins (ps: map (mapProvider ps) config.terraform.providers);
+        terraform = config.terraform.packageUnwrapped.withPlugins (ps: mapAttrsToList (_: p: ps.${p.type}) config.terraform.requiredProviders);
       in config.terraform.wrapper terraform;
-      providers = unique (
-        mapAttrsToList (_: p: p.type) config.providers
-        ++ mapAttrsToList (_: r: r.provider.type) config.resources
+      requiredProviders = mkMerge (
+        mapAttrsToList (_: p: {
+          ${p.type} = mapAttrs (_: mkDefault) (filterAttrs (_: v: v != null) {
+            inherit (p) source version;
+          });
+        }) config.providers
+        ++ mapAttrsToList (_: r: { ${r.provider.type} = { }; }) config.resources
       );
       cli = let
         vars = config.terraform.environment;
@@ -1015,6 +1062,15 @@ in {
       in mkIf (providers != [ ]) (map (p: { ${p.type} = p.hcl; }) providers);
       output = mkIf (config.outputs != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.outputs);
       variables = mkIf (config.variables != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.variables);
+      terraform = let
+        providers = config.terraform.requiredProviders;
+        v0_13 = mapAttrs' (_: p: nameValuePair p.type p.hcl) providers;
+        v0_12 = mapAttrs' (_: p: nameValuePair p.type p.version) providers;
+        required_providers' = if config.terraform.version == "0.13" then v0_13 else v0_12;
+        required_providers = filterAttrs (_: p: p != { } && p != null) required_providers';
+      in optionalAttrs (required_providers != { }) {
+        inherit required_providers;
+      };
     };
     runners.run = {
       terraform.package = config.terraform.cli;
