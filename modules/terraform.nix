@@ -114,7 +114,7 @@
       lifecycle = {
         createBeforeDestroy = mkOption {
           type = types.bool;
-          default = true;
+          default = false;
         };
         ignoreChanges = mkOption {
           type = types.either (types.enum [ "all" ]) (types.listOf types.str);
