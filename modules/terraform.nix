@@ -1004,7 +1004,9 @@ in {
         "0.13" = pkgs.terraform_0_13;
       }.${config.terraform.version};
       package = let
-        terraform = config.terraform.packageUnwrapped.withPlugins (ps: mapAttrsToList (_: p: ps.${p.type}) config.terraform.requiredProviders);
+        pluginFor = ps: p:
+          if ps ? ${p.type} then ps.${p.type} else throw "terraform provider plugin ${p.type} not found";
+        terraform = config.terraform.packageUnwrapped.withPlugins (ps: mapAttrsToList (_: pluginFor ps) config.terraform.requiredProviders);
       in config.terraform.wrapper terraform;
       requiredProviders = mkMerge (
         mapAttrsToList (_: p: {
