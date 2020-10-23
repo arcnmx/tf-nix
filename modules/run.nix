@@ -20,7 +20,7 @@
     };
     config = {
       runner = mkOptionDefault (nixRunWrapper config.executable config.package);
-      package = mkIf (config.command != null) (pkgs.writeShellScriptBin config.executable config.command);
+      package = mkOptionDefault (pkgs.writeShellScriptBin config.executable config.command);
     };
   });
 in {
