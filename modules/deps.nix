@@ -60,10 +60,18 @@ in {
         default = false;
         description = "Deleted resources may require unused providers to be present in the config.";
       };
+      providers = mkOption {
+        type = types.listOf config.lib.tf.tfTypes.providerReferenceType;
+        default = [ ];
+      };
       allOutputs = mkOption {
         type = types.bool;
         default = true;
         description = "Export all outputs even if they're unused";
+      };
+      outputs = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
       };
     };
     entries = mkOption {
@@ -169,8 +177,8 @@ in {
     targetResources = filter filterTarget targets;
 
     select' =
-      (optionals cfg.select.allProviders (mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.providers))
-      ++ (optionals cfg.select.allOutputs (mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.outputs))
+      map (r: dagFromString r.out.provider.out.hclPathStr) cfg.select.providers
+      ++ map (o: dagFromString config.outputs.${o}.out.hclPathStr) cfg.select.outputs
       ++ (if cfg.select.hclPaths == null
         then mapAttrsToList (_: r: dagFromString r.out.hclPathStr) config.resources
         else map (res: dagFromString res) cfg.select.hclPaths
@@ -179,6 +187,11 @@ in {
     deps = {
       entries = dagsFor (dagsFor' (map (t: t.key) select'));
       sorted = map ({ data, name }: data.entry) (dagTopoSort cfg.entries).result;
+
+      select = {
+        providers = mkIf cfg.select.allProviders (mapAttrsToList (_: r: r.out.reference) config.providers);
+        outputs = mkIf cfg.select.allOutputs (mapAttrsToList (_: o: o.name) config.outputs);
+      };
 
       inherit isComplete;
       hcl = assert !broken; hcl;
