@@ -104,29 +104,6 @@ in {
         type = types.str;
         default = "";
       };
-      continue = {
-        run = {
-          nixFilePath = mkOption {
-            type = types.nullOr types.path;
-            default = null;
-          };
-          nixAttr = mkOption {
-            type = types.nullOr types.str;
-            default = "runners.run.apply.package";
-          };
-          nixArgs = mkOption {
-            type = types.listOf types.str;
-            default = [ ];
-          };
-          binName = mkOption {
-            type = types.nullOr types.str;
-            default = "terraform-apply";
-          };
-        };
-        command = mkOption {
-          type = types.str;
-        };
-      };
     };
   };
 
@@ -210,17 +187,7 @@ in {
         '' + optionalString (config.continue.present) ''
           export TF_TARGETS="${concatStringsSep " " targets}"
           ${config.terraform.cli}/bin/terraform apply "$@"
-        '' + (if !config.continue.present || !cfg.isComplete then cfg.apply.continue.command else cfg.apply.doneCommand));
-        continue = {
-          run.nixArgs = mkMerge [
-            (mkIf (cfg.apply.continue.run.nixFilePath != null) [ "-f" (toString cfg.apply.continue.run.nixFilePath) ])
-            (mkIf (cfg.apply.continue.run.nixAttr != null) [ cfg.apply.continue.run.nixAttr ])
-            (mkIf (cfg.apply.continue.run.binName != null) (mkAfter [ "-c" cfg.apply.continue.run.binName ''"$@"'' ]))
-          ];
-          command = mkIf (cfg.apply.continue.run.nixArgs != [ ]) ''
-            nix run ${concatStringsSep " " cfg.apply.continue.run.nixArgs}
-          '';
-        };
+        '' + (if !config.continue.present || !cfg.isComplete then escapeShellArgs config.runners.lazy.run.apply.out.runArgs + '' "$@"'' else cfg.apply.doneCommand));
       };
     };
     continue.output.populatedTargets = mkIf cfg.enable (
@@ -235,8 +202,8 @@ in {
     };
     runners.run = mkIf cfg.enable {
       apply = {
-        executable = "terraform-apply";
-        package = cfg.apply.package;
+        executable = mkDefault "terraform-apply";
+        package = mkDefault cfg.apply.package;
       };
     };
   };

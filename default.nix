@@ -33,11 +33,10 @@
     config = {
       deps = {
         enable = true;
-        apply.continue.run = {
-          nixFilePath = ./.;
-          #nixAttr = "deps.apply.package";
-          nixArgs = [ "--show-trace" "--arg" "config" (toString config.paths.config) ];
-        };
+      };
+      runners.lazy = {
+        file = ./.;
+        args = [ "--show-trace" "--arg" "config" (toString config.paths.config) ];
       };
       state = {
         file = config.paths.dataDir + "/terraform.tfstate";
