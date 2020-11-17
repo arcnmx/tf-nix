@@ -163,7 +163,7 @@
             type = "local-exec";
             local-exec = {
               environment.NIX_SSHOPTS = config.connection.out.ssh.nixStoreOpts;
-              command = "nix copy --substitute --to ${config.connection.nixStoreUrl} ${config.system}";
+              command = "nix copy --substitute-on-destination --to ${config.connection.nixStoreUrl} ${config.system}";
             };
           } ];
         };
