@@ -1032,7 +1032,7 @@ in {
           nameValuePair "TF_VAR_${var.name}" (mkOptionDefault "$(${var.value.shellCommand})")
         ) (filterAttrs (_: var: var.value.shellCommand != null) config.variables) // {
           TF_CONFIG_DIR = mkOptionDefault "${tf.hclDir {
-            inherit hcl;
+            inherit (config) hcl;
           }}";
           TF_LOG_PATH = mkIf (config.terraform.logPath != null) (mkOptionDefault (toString config.terraform.logPath));
           TF_DATA_DIR = mkIf (config.terraform.dataDir != null) (mkOptionDefault (toString config.terraform.dataDir));
