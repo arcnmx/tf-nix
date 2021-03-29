@@ -46,7 +46,10 @@
     };
     config = {
       provider = mkIf (config.cloudflare.id != null) (mkOptionDefault "cloudflare");
-      create = mkIf (config.cloudflare.id != null) (mkDefault false);
+      create = mkMerge [
+        (mkIf (config.cloudflare.id != null) (mkDefault false))
+        (mkIf (config.provider.type == "dns") (mkDefault false))
+      ];
       out = {
         resourceName = let
           tld = tfconfig.lib.tf.terraformIdent config.tld;
@@ -65,6 +68,7 @@
               zone = config.tld;
             } // config.inputs;
           };
+          dns = { };
         }.${config.provider.type};
       };
     };
@@ -81,6 +85,10 @@
       domain = mkOption {
         type = types.nullOr types.str;
         default = null;
+      };
+      ttl = mkOption {
+        type = types.int;
+        default = 3600;
       };
       a = mkOption {
         type = types.nullOr (types.submodule ({ config, ... }: {
@@ -213,10 +221,7 @@
                 service = "_${config.srv.service}";
                 proto = "_${config.srv.proto}";
                 name = config.out.domain;
-                priority = config.srv.priority;
-                weight = config.srv.weight;
-                port = config.srv.port;
-                target = config.srv.target;
+                inherit (config.srv) priority weight port target;
               };
             } else if config.out.type == "A" then {
               value = config.a.address;
@@ -225,6 +230,38 @@
             } else if config.out.type == "CNAME" then {
               value = config.cname.target;
             } else throw "unknown DNS record ${config.out.type}");
+          };
+          dns = let
+            name = config.out.domain;
+            zone = config.out.zone.tld;
+          in {
+            provider = config.out.zone.provider.set;
+            type = "${toLower config.out.type}_record_set";
+            inputs = {
+              A = {
+                inherit zone name;
+                inherit (config) ttl;
+                addresses = singleton config.a.address;
+              };
+              AAAA = {
+                inherit zone name;
+                inherit (config) ttl;
+                addresses = singleton config.aaaa.address;
+              };
+              CNAME = {
+                inherit zone name;
+                inherit (config) ttl;
+                cname = config.cname.target;
+              };
+              SRV = {
+                inherit zone;
+                name = "_${config.srv.service}._${config.srv.proto}";
+                inherit (config) ttl;
+                srv = singleton {
+                  inherit (config.srv) priority weight port target;
+                };
+              };
+            }.${config.out.type} or (throw "Unsupported record type ${config.out.type}");
           };
         }.${config.out.zone.provider.type} or (throw "Unknown provider ${config.out.zone.provider.type}");
       };
