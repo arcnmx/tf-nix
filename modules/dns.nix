@@ -236,7 +236,8 @@
             zone = config.out.zone.tld;
           in {
             provider = config.out.zone.provider.set;
-            type = "${toLower config.out.type}_record_set";
+            type = "${toLower config.out.type}_record"
+              + optionalString (config.out.type != "CNAME" && config.out.type != "PTR") "_set";
             inputs = {
               A = {
                 inherit zone name;
