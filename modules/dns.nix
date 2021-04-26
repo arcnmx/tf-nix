@@ -110,6 +110,20 @@
         }));
         default = null;
       };
+      mx = mkOption {
+        type = types.nullOr (types.submodule ({ config, ... }: {
+          options = {
+            target = mkOption {
+              type = types.str;
+            };
+            priority = mkOption {
+              type = types.int;
+              default = 10;
+            };
+          };
+        }));
+        default = null;
+      };
       cname = mkOption {
         type = types.nullOr (types.submodule ({ config, ... }: {
           options = {
@@ -194,6 +208,7 @@
             (mapNullable (_: "A") config.a)
             (mapNullable (_: "AAAA") config.aaaa)
             (mapNullable (_: "CNAME") config.cname)
+            (mapNullable (_: "MX") config.mx)
           ];
         in if length types == 1 then mkOptionDefault (head types)
           else throw "invalid DNS record type";
@@ -229,6 +244,9 @@
               value = config.aaaa.address;
             } else if config.out.type == "CNAME" then {
               value = config.cname.target;
+            } else if config.out.type == "MX" then {
+              inherit (config.mx) priority;
+              value = config.mx.target;
             } else throw "unknown DNS record ${config.out.type}");
           };
           dns = let
@@ -248,6 +266,14 @@
                 inherit zone name;
                 inherit (config) ttl;
                 addresses = singleton config.aaaa.address;
+              };
+              MX = {
+                inherit zone;
+                inherit (config) ttl;
+                mx = singleton {
+                  preference = config.mx.priority;
+                  exchange = config.mx.target;
+                };
               };
               CNAME = {
                 inherit zone name;
