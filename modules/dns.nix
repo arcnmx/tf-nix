@@ -75,6 +75,9 @@
   });
   recordType = types.submodule ({ name, config, ... }: {
     options = {
+      enable = mkEnableOption "dns record" // {
+        default = true;
+      };
       name = mkOption {
         type = types.str;
         default = name;
@@ -325,5 +328,5 @@ in {
   };
   config.resources =
     mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName cfg.out.set) (filterAttrs (_: z: z.create) cfg.zones)
-    // mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName cfg.out.set) cfg.records;
+    // mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName cfg.out.set) (filterAttrs (_: r: r.enable) cfg.records);
 }
