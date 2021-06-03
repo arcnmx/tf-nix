@@ -197,6 +197,7 @@ in {
       environment = mkIf cfg.enable {
         TF_CONFIG_DIR = mkDefault "${hclDir {
           inherit (cfg) hcl;
+          terraform = config.terraform.packageWithPlugins;
         }}";
       };
     };

@@ -2,13 +2,21 @@
 # - TF_CONFIG_DIR: path to terraform configuration
 # - TF_STATE_FILE: path to terraform state file (this *must not* be the same as $TF_DATA_DIR/terraform.tfstate)
 # - TF_TARGETS: space-separated list of targets to select (terraform recommends not using this option)
-{ lib, writeShellScriptBin, terraform }: with lib; writeShellScriptBin "terraform" ''
+{ lib
+, writeShellScriptBin
+, terraform
+, terraformVersion ? terraform.version or (builtins.parseDrvName terraform.name).version
+}: with lib; writeShellScriptBin "terraform" ''
   set -eu
 
   if [[ -n ''${TF_CONFIG_DIR-} ]]; then
     case ''${1-} in
       init|plan|apply|destroy|providers|graph|refresh)
-        set -- "$@" "$TF_CONFIG_DIR"
+        ${if versionAtLeast version "0.14" then ''
+          set -- -chdir="$TF_CONFIG_DIR" "$@"
+        '' else ''
+          set -- "$@" "$TF_CONFIG_DIR"
+        ''}
         ;;
     esac
     export TF_CLI_ARGS_import="''${TF_CLI_ARGS_import-} -config=$TF_CONFIG_DIR"

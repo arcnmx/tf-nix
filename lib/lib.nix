@@ -100,17 +100,26 @@
   hclDir = {
     name ? "terraform"
   , hcl
+  , terraform ? pkgs.buildPackages.terraform
+  , generateLockfile ? versionAtLeast terraform.version or (builtins.parseDrvName terraform.name).version "0.14"
   }: pkgs.stdenvNoCC.mkDerivation {
     name = "${name}.tf.json";
     allowSubstitutes = false;
     preferLocalBuild = true;
 
+    nativeBuildInputs = optional generateLockfile terraform;
     passAsFile = [ "hcl" "script" "buildCommand" ];
     hcl = toJSON hcl;
 
     buildCommand = ''
       mkdir -p $out
       install -Dm0644 $hclPath $out/$name
+    '' + optionalString generateLockfile ''
+      terraform -chdir=$out providers lock \
+        -fs-mirror=${terraform /* TODO resolve this properly if spliced */}/plugins \
+        -platform=${terraform.stdenv.hostPlatform.parsed.kernel.name + "_" + {
+        x86-64 = "amd64";
+      }.${terraform.stdenv.hostPlatform.parsed.cpu.arch} or (throw "unknown tf arch")}
     '';
   };
 

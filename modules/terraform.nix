@@ -635,14 +635,14 @@
       source = mkOption {
         type = types.nullOr types.str;
         default =
-          if tconfig.terraform.version == "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.provider-source-address
+          if versionAtLeast tconfig.terraform.version "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.provider-source-address
           then tconfig.terraform.packageUnwrapped.plugins.${config.type}.provider-source-address
           else "nixpkgs/${config.type}";
       };
       version = mkOption {
         type = types.nullOr types.str;
         default =
-          if tconfig.terraform.version == "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.version
+          if versionAtLeast tconfig.terraform.version "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.version
           then tconfig.terraform.packageUnwrapped.plugins.${config.type}.version
           else null;
       };
@@ -936,14 +936,18 @@ in {
 
     terraform = {
       version = mkOption {
-        type = types.enum [ "0.11" "0.12" "0.13" ];
-        default = "0.12";
+        type = types.enum [ "0.11" "0.12" "0.13" "0.14" "0.15" ];
+        default = "0.14";
       };
       package = mkOption {
         type = types.package;
         readOnly = true;
       };
       packageUnwrapped = mkOption {
+        type = types.package;
+        readOnly = true;
+      };
+      packageWithPlugins = mkOption {
         type = types.package;
         readOnly = true;
       };
@@ -1002,12 +1006,16 @@ in {
         "0.11" = pkgs.terraform_0_11;
         "0.12" = pkgs.terraform_0_12;
         "0.13" = pkgs.terraform_0_13;
+        "0.14" = pkgs.terraform_0_14;
+        "0.15" = pkgs.terraform_0_15;
       }.${config.terraform.version};
-      package = let
+      package = config.terraform.wrapper config.terraform.packageWithPlugins;
+      packageWithPlugins = let
         pluginFor = ps: p:
           if ps ? ${p.type} then ps.${p.type} else throw "terraform provider plugin ${p.type} not found";
-        terraform = config.terraform.packageUnwrapped.withPlugins (ps: mapAttrsToList (_: pluginFor ps) config.terraform.requiredProviders);
-      in config.terraform.wrapper terraform;
+      in config.terraform.packageUnwrapped.withPlugins (ps:
+        mapAttrsToList (_: pluginFor ps) config.terraform.requiredProviders
+      );
       requiredProviders = mkMerge (
         mapAttrsToList (_: p: {
           ${p.type} = mapAttrs (_: mkDefault) (filterAttrs (_: v: v != null) {
@@ -1031,6 +1039,7 @@ in {
         ) (filterAttrs (_: var: var.value.shellCommand != null) config.variables) // {
           TF_CONFIG_DIR = mkOptionDefault "${tf.hclDir {
             inherit (config) hcl;
+            terraform = config.terraform.packageWithPlugins;
           }}";
           TF_LOG_PATH = mkIf (config.terraform.logPath != null) (mkOptionDefault (toString config.terraform.logPath));
           TF_DATA_DIR = mkIf (config.terraform.dataDir != null) (mkOptionDefault (toString config.terraform.dataDir));
@@ -1038,6 +1047,7 @@ in {
           TF_CLI_CONFIG_FILE = mkOptionDefault "${pkgs.writeText "terraformrc" ''
             disable_checkpoint = true
           ''}";
+          TF_CLI_ARGS_init = mkIf (versionAtLeast config.terraform.version "0.14") "-lockfile=readonly";
           TF_CLI_ARGS_refresh = "-compact-warnings";
           TF_CLI_ARGS_state_replace_provider = "-auto-approve";
           TF_CLI_ARGS_apply = mkMerge ([
@@ -1067,7 +1077,7 @@ in {
         providers = config.terraform.requiredProviders;
         v0_13 = mapAttrs' (_: p: nameValuePair p.type p.hcl) providers;
         v0_12 = mapAttrs' (_: p: nameValuePair p.type p.version) providers;
-        required_providers' = if config.terraform.version == "0.13" then v0_13 else v0_12;
+        required_providers' = if versionAtLeast config.terraform.version "0.13" then v0_13 else v0_12;
         required_providers = filterAttrs (_: p: p != { } && p != null) required_providers';
       in optionalAttrs (required_providers != { }) {
         inherit required_providers;
