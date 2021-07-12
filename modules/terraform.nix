@@ -697,6 +697,11 @@
         type = types.nullOr variableValidationType;
         default = null;
       };
+      sensitive = mkOption {
+        # new in 0.14?
+        type = types.bool;
+        default = false;
+      };
       value = {
         shellCommand = mkOption {
           type = types.nullOr types.str;
@@ -731,6 +736,8 @@
       hcl = filterAttrs (_: v: v != null) {
         inherit (config) type default;
         validation = mapNullable (v: v.hcl) config.validation;
+      } // optionalAttrs config.sensitive {
+        sensitive = true;
       };
       out = {
         reference = "var.${config.name}";
