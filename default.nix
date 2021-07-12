@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> { }, config ? ./example/example.nix }: with pkgs.lib; let
+{ pkgs ? import <nixpkgs> { }, config }: with pkgs.lib; let
   pkgsModule = { ... }: {
     config._module.args = {
       pkgs = mkDefault pkgs;
@@ -79,12 +79,22 @@
     _module.args.pkgs = mkDefault (import pkgs.path {
       inherit (config.nixpkgs) config overlays localSystem crossSystem;
     });
+
+    # signal to the module that they will be externally managed
+    secrets.external = true;
+
+    services.openssh.enable = mkDefault true;
+
+    # slim build
+    documentation.enable = mkDefault false;
+    services.udisks2.enable = mkDefault false;
   };
   nixosType = modules: let
     baseModules = import (pkgs.path + "/nixos/modules/module-list.nix");
   in types.submoduleWith {
     modules = baseModules ++ [
       nixosModule
+      ./modules/nixos
     ] ++ toList modules;
 
     specialArgs = {
