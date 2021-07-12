@@ -978,6 +978,10 @@ in {
         type = types.bool;
         default = false;
       };
+      inputPrompt = mkOption {
+        type = types.bool;
+        default = true;
+      };
       logLevel = mkOption {
         type = types.enum [ "TRACE" "DEBUG" "INFO" "WARN" "ERROR" "" ];
         default = "";
@@ -1063,6 +1067,7 @@ in {
             "-refresh=${if config.terraform.refreshOnApply then "true" else "false"}"
           ] ++ optional config.terraform.autoApprove "-auto-approve");
           TF_IN_AUTOMATION = mkOptionDefault "1";
+          TF_INPUT = mkOptionDefault (if config.terraform.inputPrompt then "1" else "0");
           TF_LOG = mkOptionDefault config.terraform.logLevel;
         };
     };
