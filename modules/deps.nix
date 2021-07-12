@@ -148,7 +148,7 @@ in {
 
     filterTarget = e: let
       item = fromHclPath e.key;
-    in item.kind == "resource";
+    in item.kind == "resource" || item.kind == "data";
     targetMap = (e: (fromHclPath e.key).out.reference);
     targets = done ++ tfTargets;
     targetResources = filter filterTarget targets;
