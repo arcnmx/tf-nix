@@ -117,8 +117,10 @@ in {
     runners.lazy = {
       run = mapAttrs' (k: run: nameValuePair k (mapAttrs (_: mkDefault) {
         attr = "${cfg.lazy.attrPrefix}${k}.package";
-        inherit (cfg.lazy) args file;
+        inherit (cfg.lazy) file;
         inherit (run) executable name;
+      } // {
+        inherit (cfg.lazy) args;
       })) cfg.run;
       nativeBuildInputs = mapAttrsToList (k: v: pkgs.writeShellScriptBin v.name ''
         exec ${escapeShellArgs v.out.runArgs} "$@"
