@@ -564,8 +564,10 @@
           IdentityFile = config.ssh.privateKeyFile;
         };
         cliArgs =
-          [ "-q" "-o" "UpdateHostKeys=no" ]
-          ++ optionals (config.ssh.bastion.host != null) [ "-J" bastionDestination ]
+          [ "-q" "-F" "none"
+            "-o" "StrictHostKeyChecking=off"
+            "-o" "UserKnownHostsFile=/dev/null"
+          ] ++ optionals (config.ssh.bastion.host != null) [ "-J" bastionDestination ]
           ++ optionals (config.port != null) [ "-p" (toString config.port) ]
           ++ optionals (config.ssh.privateKeyFile != null) [ "-i" config.ssh.privateKeyFile ];
         destination = "${if config.user == null then "root" else config.user}@${config.host}";
