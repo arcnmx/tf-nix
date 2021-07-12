@@ -163,7 +163,7 @@ in {
   in {
     deps = {
       entries = dagsFor (dagsFor' (map (t: t.key) select'));
-      sorted = map ({ data, name }: data.entry) (dagTopoSort cfg.entries).result;
+      sorted = map ({ data, name }: data.entry) (dagTopoSort cfg.entries).result or (throw "tf-nix dependency loop detected");
 
       select = {
         providers = mkIf cfg.select.allProviders (mapAttrsToList (_: r: r.out.reference) config.providers);
