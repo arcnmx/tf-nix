@@ -130,6 +130,7 @@
 
   dag = import ./dag.nix { inherit lib; };
   run = import ./run.nix { inherit pkgs; };
+  syntax = import ./syntax.nix { inherit lib; };
 
   readState = statefile: let
     state = fromJSON (readFile statefile);
