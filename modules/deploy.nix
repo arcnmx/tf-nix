@@ -41,6 +41,10 @@
         };
       };
       triggers = {
+        common = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+        };
         copy = mkOption {
           type = types.attrsOf types.str;
           default = { };
@@ -81,13 +85,14 @@
         refIds = mkMerge (mapAttrsToList (key: _: tf.resources."${config.name}_${tf.lib.tf.terraformIdent key}".refAttr "id") config.secrets.files);
       };
       triggers = {
-        copy = {
+        copy = mapAttrs (_: mkOptionDefault) config.triggers.common // {
           system = "${config.system}";
         };
         switch = {
           copy = config.out.resource.copy.refAttr "id";
           secrets = config.secrets.refIds;
         };
+        secrets = mapAttrs (_: mkOptionDefault) config.triggers.common;
       };
       out.setResources =
         listToAttrs (concatLists (mapAttrsToList (key: file: let

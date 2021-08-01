@@ -62,8 +62,7 @@ in {
       nixosConfig = config.nixos;
       connection = server.connection.set;
       # if server gets replaced, make sure the deployment starts over
-      triggers.copy.server = server.refAttr "id";
-      triggers.secrets.server = server.refAttr "id";
+      triggers.common.server = server.refAttr "id";
     };
   };
 
