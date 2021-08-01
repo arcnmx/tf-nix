@@ -1,4 +1,5 @@
 { config, lib, pkgs, tfModulesPath, ... }: with lib; let
+  tf = config;
   res = config.resources;
 in {
   config = {
@@ -48,10 +49,10 @@ in {
 
         # terraform -> nix references
         users.users.root.openssh.authorizedKeys.keys = singleton (
-          res.access_key.refAttr "public_key_openssh"
+          res.access_key.getAttr "public_key_openssh"
         );
         users.motd = ''
-          welcome to ${res.server.refAttr config.example.serverAddr}
+          welcome to ${res.server.getAttr tf.example.serverAddr}
           please don't look at ${config.secrets.files.pet.path}, it's private.
         '';
         security.pam.services.sshd.showMotd = true;
