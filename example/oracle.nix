@@ -96,11 +96,11 @@ in {
         dataSource = true;
         inputs = {
           part = [
-            /*{
+            {
               content_type = "text/cloud-config";
               content = "#cloud-config\n" + builtins.toJSON {
                 disable_root = false;
-                # we have provisioners for write_files so whatever
+                /* we have provisioners for write_files so whatever
                 write_files = [
                   {
                     path = "/infect.nix";
@@ -112,9 +112,9 @@ in {
                       curl -L https://nixos.org/nix/install | $SHELL
                     '';
                   }
-                ];
+                ];*/
               };
-            }*/
+            }
             /*{
               content_type = "text/x-shellscript";
               filename = "99-infect.sh";
@@ -184,64 +184,6 @@ in {
             boot_volume_size_in_gbs = 50; # why is the minimum so high wtf..?
           };
         };
-        provisioners = let
-          system = config.baseImage.system.build.toplevel;
-        in mkIf config.nixosInfect [
-          { file = {
-            destination = "/infect.nix";
-            content = ''
-              #!/usr/bin/env bash
-              set -eu
-
-              mount
-              find /dev/disk
-
-              groupadd nixbld -g 30000 || true
-              for i in {1..10}; do
-                useradd -c "Nix build user $i" -d /var/empty -g nixbld -G nixbld -M -N -r -s "$(command -v nologin)" "nixbld$i" || true
-              done
-
-              curl -L https://nixos.org/nix/install | $SHELL
-              sed -i -e '1s_^_source ~/.nix-profile/etc/profile.d/nix.sh\n_' ~/.bashrc # must be at beginning of file
-            ''; # TODO: tmp mkswap and swapon because nix copy can eat rams thanks
-          }; }
-          { file = {
-            destination = "/infect.lustrate";
-            content = ''
-              #!/usr/bin/env bash
-              set -eu
-
-              touch /etc/NIXOS
-              touch /etc/NIXOS_LUSTRATE
-              echo /root/.ssh/authorized_keys >> /etc/NIXOS_LUSTRATE
-            '';
-          }; }
-          { file = {
-            destination = "/infect.switch";
-            content = ''
-              #!/usr/bin/env bash
-              set -eu
-
-              find /boot -type f -delete
-              umount /boot/efi && mount ${config.nixos.fileSystems."/boot".device} /boot
-              mount --move /boot/esp /boot || echo failed to move /boot/esp
-
-              source ~/.nix-profile/etc/profile.d/nix.sh
-              nix-env -p /nix/var/nix/profiles/system --set ${system}
-              /nix/var/nix/profiles/system/bin/switch-to-configuration boot
-            '';
-          }; }
-          { remote-exec.command = "bash -x /infect.nix"; }
-          { remote-exec.command = "bash -x /infect.lustrate"; }
-          { local-exec = {
-            environment.NIX_SSHOPTS = res.server.connection.out.ssh.nixStoreOpts;
-            command = "nix copy --substitute-on-destination --to ${res.server.connection.nixStoreUrl} ${system}";
-          }; }
-          { remote-exec.command = "bash -x /infect.switch"; }
-          { remote-exec.command = "reboot";
-            onFailure = "continue";
-          }
-        ];
       };
 
       availability_domain = {
@@ -286,6 +228,7 @@ in {
     };
 
     example.serverAddr = "public_ip";
+    deploy.systems.system.lustrate.enable = config.nixosInfect;
 
     nixos = { ... }: {
       imports = [
