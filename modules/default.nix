@@ -5,6 +5,7 @@
     ./terraform.nix
     ./state.nix
     ./deploy.nix
+    ./lustrate.nix
     ./run.nix
     ./deps.nix
     ./continue.nix
