@@ -8,11 +8,6 @@
   freeform_tags = {
     tfnix = true;
   };
-  infectEnv = {
-    NIXOS_IMPORT = "/tmp/infect.nix";
-    NIX_CHANNEL = "nixos-21.05";
-  };
-  infectEnvStrs = mapAttrsToList (k: v: "${k}=${v}") infectEnv;
 in {
   imports = [
     # common example system
@@ -100,43 +95,8 @@ in {
               content_type = "text/cloud-config";
               content = "#cloud-config\n" + builtins.toJSON {
                 disable_root = false;
-                /* we have provisioners for write_files so whatever
-                write_files = [
-                  {
-                    path = "/infect.nix";
-                    permissions = "0755";
-                    content = ''
-                      #!/usr/bin/env bash
-                      set -eu
-
-                      curl -L https://nixos.org/nix/install | $SHELL
-                    '';
-                  }
-                ];*/
               };
             }
-            /*{
-              content_type = "text/x-shellscript";
-              filename = "99-infect.sh";
-              content = ''
-                #!/usr/bin/env bash
-
-                if [[ ! -e /etc/nixos/configuration.nix ]]; then
-                  systemctl --no-block stop ssh
-
-                  curl https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect |
-                    env ${escapeShellArgs infectEnvStrs} bash -s 2>&1 | tee /var/log/infect.log
-                  RES=$?
-
-                  # this shouldn't return if it works...
-                  if [[ $RES -ne 0 ]]; then
-                    systemctl --no-block start ssh
-                  fi
-
-                  exit $RES
-                fi
-              '';
-            }*/
           ];
         };
       };
@@ -201,7 +161,6 @@ in {
         tenancy_ocid = oci_tenancy.ref;
         user_ocid = oci_user.ref;
         private_key = oci_privkey.ref;
-        #private_key_path = oci_privkey_file.ref;
         fingerprint = oci_fingerprint.ref;
         region = oci_region.ref;
       };
@@ -217,7 +176,6 @@ in {
       oci_tenancy = apivar;
       oci_user = apivar;
       oci_privkey = apivar;
-      oci_privkey_file = apivar;
       oci_fingerprint = apivar;
       oci_bucket = apivar;
       oci_compartment = apivar;
