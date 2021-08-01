@@ -19,10 +19,10 @@ export TF_VAR_do_token=XXX
 nix run tf.run.apply --arg config ./example/digitalocean.nix
 
 # Now log into the server that was just deployed:
-nix run tf.run.system-ssh --arg config ./example/example.nix
+nix run tf.run.system-ssh --arg config ./example/digitalocean.nix
 
 # To undo the above:
-nix run tf.run.terraform --arg config ./example/example.nix -c terraform destroy
+nix run tf.run.terraform --arg config ./example/digitalocean.nix -c terraform destroy
 ```
 
 ## See Also
