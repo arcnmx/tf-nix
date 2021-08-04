@@ -22,7 +22,7 @@ in {
     };
 
     boot = {
-      growPartition = true;
+      growPartition = image;
       kernelParams = [
         "panic=30" "boot.panic_on_fail"
         "console=ttyS0"
