@@ -4,7 +4,9 @@
   res = config.resources;
   var = config.variables;
   out = config.outputs;
-  shape = "VM.Standard.E2.1.Micro";
+  shape =
+    if config.ampereA1 then "VM.Standard.A1.Flex"
+    else "VM.Standard.E2.1.Micro";
   freeform_tags = {
     tfnix = true;
   };
@@ -143,6 +145,11 @@ in {
               else res.generic_image.refAttr "images[0].id";
             boot_volume_size_in_gbs = 50; # why is the minimum so high wtf..?
           };
+        } // optionalAttrs config.ampereA1 {
+          shape_config = {
+            memory_in_gbs = 1;
+            ocpus = 1;
+          };
         };
       };
 
@@ -192,6 +199,17 @@ in {
       imports = [
         ./oracle-image.nix
       ];
+
+      config = {
+        nixpkgs = let
+          armSystem = systems.examples.aarch64-multiplatform // {
+            system = "aarch64-linux";
+          };
+        in mkIf config.ampereA1 {
+          localSystem = mkIf config.nativeArm armSystem;
+          crossSystem = mkIf (!config.nativeArm) armSystem;
+        };
+      };
     };
 
     baseImage = { config, lib, pkgs, modulesPath, ... }: {
@@ -219,6 +237,17 @@ in {
 
     # free plan requires it because image storage space isn't included
     nixosInfect = mkOption {
+      type = types.bool;
+      default = true;
+    };
+
+    ampereA1 = mkOption {
+      type = types.bool;
+      default = false;
+    };
+
+    nativeArm = mkOption {
+      description = "May require qemu-aarch64 binfmt handler registered on the host build machine";
       type = types.bool;
       default = true;
     };
