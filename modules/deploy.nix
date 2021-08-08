@@ -103,9 +103,12 @@
           type = "resource";
           connection = mkIf config.isRemote config.connection.set;
           inputs.triggers = {
-            inherit (file) sha256 text owner group mode;
-            inherit source;
+            inherit (file) sha256 owner group mode;
             path = toString file.path;
+          } // optionalAttrs (file.source == null) {
+            file = tf.resources."${name}_file".refAttr "id";
+          } // optionalAttrs (file.source != null) {
+            inherit source;
           } // config.triggers.secrets;
           provisioners = if config.isRemote then [ {
             type = "remote-exec";
