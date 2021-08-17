@@ -12,13 +12,6 @@ in {
   config = {
     services = {
       cloud-init.enable = image;
-      getty.autologinUser = "root"; # FOR TESTING REMOVEME!!!
-    };
-
-    environment = {
-      variables = {
-        GC_INITIAL_HEAP_SIZE = mkDefault "8M"; # nix default is way too big
-      };
     };
 
     boot = {
