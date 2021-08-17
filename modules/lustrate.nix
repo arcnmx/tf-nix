@@ -19,12 +19,16 @@
 
         whitelist = mkOption {
           type = with types; listOf path;
+          default = [ ];
+          defaultText = ''[ "/root/.ssh/authorized_keys" ]'';
         };
         mount = mkOption {
           type = with types; listOf str;
+          default = [ ];
         };
         unmount = mkOption {
           type = with types; listOf path;
+          default = [ ];
         };
 
         scripts = {
