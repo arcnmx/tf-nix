@@ -1,6 +1,7 @@
-{ config, ... }: let
+{ config, lib, pkgs, ... }: with lib; let
   inherit (config.lib.tf) terraformSelf;
   res = config.resources;
+  lustrate = config.deploy.systems.system.lustrate.enable;
 in {
   imports = [
     # common example system
@@ -8,6 +9,13 @@ in {
   ];
 
   config = {
+    # NOTE: if not using NIXOS_LUSTRATE, images must be uploaded manually, and can be built with:
+    # nix-build '<tf>' -A config.baseImage.digitalOceanImage --arg config ./example/digitalocean.nix
+    # ... then upload it via web interface as "nixos-image-example" as used below.
+    deploy.systems.system.lustrate = {
+      enable = true;
+    };
+
     resources = {
       do_access = {
         provider = "digitalocean";
@@ -18,12 +26,10 @@ in {
         };
       };
 
-      nixos_image = {
+      nixos_image = mkIf (!lustrate) {
         provider = "digitalocean";
         type = "image";
         dataSource = true;
-        # NOTE: must be uploaded manually because terraform doesn't support uploading images :<
-        # nix-build '<tf>' -A config.baseImage.digitalOceanImage --arg config ./example/digitalocean.nix
         inputs.name = "nixos-image-example";
       };
 
@@ -31,10 +37,12 @@ in {
         provider = "digitalocean";
         type = "droplet";
         inputs = {
-          image = res.nixos_image.refAttr "id";
+          image = if lustrate
+            then "ubuntu-20-10-x64"
+            else res.nixos_image.refAttr "id";
           name = "server";
           region = "tor1";
-          size = "s-1vcpu-2gb";
+          size = "s-1vcpu-1gb";
           ssh_keys = singleton (res.do_access.refAttr "id");
         };
         connection = {
@@ -49,6 +57,7 @@ in {
 
     variables.do_token = {
       type = "string";
+      sensitive = true;
       # populate variable using https://www.passwordstore.org/
       #value.shellCommand = "pass show tokens/digitalocean";
     };
@@ -58,10 +67,17 @@ in {
     };
 
     # configure the nixos image for use with DO's monitoring/networking/etc
-    nixos = { modulesPath, ... }: {
+    nixos = { tfModules, ... }: {
       imports = [
-        (modulesPath + "/virtualisation/digital-ocean-config.nix")
-      ];
+        tfModules.nixos.digitalocean
+      ] ++ optional lustrate tfModules.nixos.ubuntu-linux;
+
+      config = {
+        virtualisation.digitalOcean = {
+          rebuildFromUserData = false;
+          metadataNetworking = lustrate;
+        };
+      };
     };
     baseImage = { modulesPath, ... }: {
       imports = [
