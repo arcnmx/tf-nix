@@ -3,6 +3,9 @@
   tfconfig = config;
   zoneType = types.submodule ({ name, config, ... }: {
     options = {
+      enable = mkEnableOption "dns zone" // {
+        default = true;
+      };
       tld = mkOption {
         type = types.str;
         default = name;
@@ -37,10 +40,22 @@
           internal = true;
           readOnly = true;
         };
-        set = mkOption {
-          type = types.attrsOf types.unspecified;
-          internal = true;
-          readOnly = true;
+        set = {
+          provider = mkOption {
+            type = types.unspecified;
+            internal = true;
+            readOnly = true;
+          };
+          type = mkOption {
+            type = types.str;
+            internal = true;
+            readOnly = true;
+          };
+          inputs = mkOption {
+            type = types.attrs;
+            internal = true;
+            readOnly = true;
+          };
         };
       };
     };
@@ -57,7 +72,6 @@
         resource = tfconfig.resources.${config.out.resourceName};
         set = {
           provider = config.provider.set;
-          inherit (config) dataSource;
         } // {
           cloudflare = if config.dataSource then {
             type = "zones";
@@ -206,10 +220,22 @@
           internal = true;
           readOnly = true;
         };
-        set = mkOption {
-          type = types.attrsOf types.unspecified;
-          internal = true;
-          readOnly = true;
+        set = {
+          provider = mkOption {
+            type = types.unspecified;
+            internal = true;
+            readOnly = true;
+          };
+          type = mkOption {
+            type = types.str;
+            internal = true;
+            readOnly = true;
+          };
+          inputs = mkOption {
+            type = types.attrs;
+            internal = true;
+            readOnly = true;
+          };
         };
       };
     };
@@ -327,6 +353,14 @@ in {
     };
   };
   config.resources =
-    mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName cfg.out.set) (filterAttrs (_: z: z.create) cfg.zones)
-    // mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName cfg.out.set) (filterAttrs (_: r: r.enable) cfg.records);
+    mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName {
+      inherit (cfg) enable dataSource;
+      inherit (cfg.out.set) provider type;
+      inputs = mkIf cfg.enable cfg.out.set.inputs;
+    }) (filterAttrs (_: z: z.create) cfg.zones)
+    // mapAttrs' (name: cfg: nameValuePair cfg.out.resourceName {
+      inherit (cfg) enable;
+      inherit (cfg.out.set) provider type;
+      inputs = mkIf cfg.enable cfg.out.set.inputs;
+    }) cfg.records;
 }
