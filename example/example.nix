@@ -56,6 +56,7 @@ in {
           please don't look at ${config.secrets.files.pet.path}, it's private.
         '';
         security.pam.services.sshd.showMotd = true;
+        services.getty.autologinUser = "root"; # XXX: REMOVE ME, for testing only
       };
     };
     deploy.systems.system = with config.resources; {

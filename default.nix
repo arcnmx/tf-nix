@@ -88,6 +88,10 @@
     # slim build
     documentation.enable = mkDefault false;
     services.udisks2.enable = mkDefault false;
+
+    environment.variables = {
+      GC_INITIAL_HEAP_SIZE = mkDefault "8M"; # nix default is way too big
+    };
   };
   nixosType = modules: let
     baseModules = import (pkgs.path + "/nixos/modules/module-list.nix");
