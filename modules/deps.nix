@@ -4,7 +4,7 @@
   dagType = types.submodule ({ config, ... }: {
     options = {
       type = mkOption {
-        type = types.enum [ "drv" "tf" ];
+        type = types.enum [ "drv" "path" "tf" ];
       };
 
       key = mkOption {
@@ -21,6 +21,9 @@
   } else if hasSuffix ".drv" str then {
     type = "drv";
     key = str;
+  } else if hasPrefix "/" str then {
+    type = "path";
+    key = str;
   } else {
     type = "tf";
     key = str;
@@ -32,7 +35,10 @@
     entry = dagFromString entry';
     target = fromHclPath entry.key;
     json = toJSON target.hcl;
-    references = if entry.type == "tf" then mapAttrsToList (k: _: (dagFromString k).key) (getContext json) else terraformContextForDrv entry.key;
+    references = if entry.type == "tf"
+      then mapAttrsToList (k: _: (dagFromString k).key) (getContext json)
+      else if entry.type == "drv" then terraformContextForDrv entry.key
+      else [ ]; # TODO: consider including the entry.key path in dag? paths can't depend on anything though so are mostly useless?
   in {
     ${entry.key} = dagEntryAfter references {
       inherit references;
