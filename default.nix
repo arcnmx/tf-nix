@@ -94,7 +94,7 @@
     ] ++ toList modules;
 
     specialArgs = {
-      inherit baseModules;
+      inherit baseModules tfModules;
       modulesPath = nixosModulesPath;
     };
   };
