@@ -195,10 +195,10 @@ in {
     example.serverAddr = "public_ip";
     deploy.systems.system.lustrate.enable = config.nixosInfect;
 
-    nixos = { ... }: {
+    nixos = { tfModules, ... }: {
       imports = [
-        ./oracle-image.nix
-      ];
+        tfModules.nixos.oracle
+      ] ++ optional config.nixosInfect tfModules.nixos.ubuntu-linux;
 
       config = {
         nixpkgs = let
@@ -212,9 +212,9 @@ in {
       };
     };
 
-    baseImage = { config, lib, pkgs, modulesPath, ... }: {
+    baseImage = { config, lib, pkgs, tfModules, modulesPath, ... }: {
       imports = [
-        ./oracle-image.nix
+        tfModules.nixos.oracle
       ];
 
       config = {
