@@ -4,6 +4,7 @@
       pkgs = mkDefault pkgs;
     };
   };
+  tfModules = import ./modules;
   nixosModulesPath = toString (pkgs.path + "/nixos/modules");
   configPath = config;
   configModule = { pkgs, config, ... }: {
@@ -60,7 +61,7 @@
     modules = [
       pkgsModule
       configModule
-      ./modules
+      tfModules
     ] ++ toList config;
 
     specialArgs = {
@@ -82,23 +83,14 @@
 
     # signal to the module that they will be externally managed
     secrets.external = true;
-
-    services.openssh.enable = mkDefault true;
-
-    # slim build
-    documentation.enable = mkDefault false;
-    services.udisks2.enable = mkDefault false;
-
-    environment.variables = {
-      GC_INITIAL_HEAP_SIZE = mkDefault "8M"; # nix default is way too big
-    };
   };
   nixosType = modules: let
     baseModules = import (pkgs.path + "/nixos/modules/module-list.nix");
   in types.submoduleWith {
     modules = baseModules ++ [
       nixosModule
-      ./modules/nixos
+      tfModules.nixos
+      tfModules.nixos.headless
     ] ++ toList modules;
 
     specialArgs = {
