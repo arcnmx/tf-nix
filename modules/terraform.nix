@@ -213,7 +213,9 @@
       getAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
-      in (ctx + optionalString exists tconfig.state.resources.${config.out.reference}.${attr}));
+        attrPath = splitString "." attr;
+        fallback = throw "${attr} on ${config.out.reference} not found";
+      in (ctx + optionalString exists (attrByPath attrPath fallback tconfig.state.resources.${config.out.reference})));
       importAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
