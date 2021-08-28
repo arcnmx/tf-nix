@@ -1,17 +1,28 @@
 { config, lib, ... }: with lib; let
   cfg = config.dns;
-  tfconfig = config;
+  tflib = config.lib.tf;
+  inherit (config) resources;
+  warnings = mkOption {
+    # mkAliasOptionModule sets these
+    type = with types; listOf str;
+    internal = true;
+    default = [ ];
+  };
   zoneType = types.submodule ({ name, config, ... }: {
+    imports = [
+      (mkRenamedOptionModule [ "tld" ] [ "domain" ])
+      (mkAliasOptionModule [ "zone" ] [ "domain" ])
+    ];
     options = {
       enable = mkEnableOption "dns zone" // {
         default = true;
       };
-      tld = mkOption {
+      domain = mkOption {
         type = types.str;
         default = name;
       };
       provider = mkOption {
-        type = tfconfig.lib.tf.tfTypes.providerReferenceType;
+        type = tflib.tfTypes.providerReferenceType;
       };
       create = mkOption {
         type = types.bool;
@@ -58,6 +69,7 @@
           };
         };
       };
+      inherit warnings;
     };
     config = {
       provider = mkIf (config.cloudflare.id != null) (mkOptionDefault "cloudflare");
@@ -67,19 +79,19 @@
       ];
       out = {
         resourceName = let
-          tld = tfconfig.lib.tf.terraformIdent config.tld;
-        in mkOptionDefault "${config.provider.type}_${tld}";
-        resource = tfconfig.resources.${config.out.resourceName};
+          domain = tflib.terraformIdent config.domain;
+        in mkOptionDefault "${config.provider.type}_${domain}";
+        resource = resources.${config.out.resourceName};
         set = {
           provider = config.provider.set;
         } // {
           cloudflare = if config.dataSource then {
             type = "zones";
-            inputs.filter.name = config.tld;
+            inputs.filter.name = config.domain;
           } else {
             type = "zone";
             inputs = {
-              zone = config.tld;
+              zone = config.domain;
             } // config.inputs;
           };
           dns = { };
@@ -88,6 +100,9 @@
     };
   });
   recordType = types.submodule ({ name, config, ... }: {
+    imports = [
+      (mkRenamedOptionModule [ "tld" ] [ "zone" ])
+    ];
     options = {
       enable = mkEnableOption "dns record" // {
         default = true;
@@ -96,7 +111,7 @@
         type = types.str;
         default = name;
       };
-      tld = mkOption {
+      zone = mkOption {
         type = types.str;
       };
       domain = mkOption {
@@ -238,6 +253,7 @@
           };
         };
       };
+      inherit warnings;
     };
     config = {
       out = {
@@ -253,12 +269,12 @@
         in if length types == 1 then mkOptionDefault (head types)
           else throw "invalid DNS record type";
         resourceName = let
-          tld = replaceStrings [ "-" "." ] [ "_" "_" ] config.name;
-        in mkOptionDefault "record_${tld}_${config.out.type}";
+          name = replaceStrings [ "-" "." ] [ "_" "_" ] config.name;
+        in mkOptionDefault "record_${name}_${config.out.type}";
         domain = if config.domain == null then "@" else config.domain;
-        fqdn = if config.domain == null then config.tld else "${config.domain}.${config.tld}";
-        resource = tfconfig.resources.${config.out.resourceName};
-        zone = cfg.zones.${config.tld};
+        fqdn = optionalString (config.domain != null) "${config.domain}." + config.zone;
+        resource = resources.${config.out.resourceName};
+        zone = cfg.zones.${config.zone};
         set = {
           cloudflare = {
             provider = config.out.zone.provider.set;
@@ -293,7 +309,7 @@
           };
           dns = let
             name = config.out.domain;
-            zone = config.out.zone.tld;
+            zone = config.out.zone.domain;
           in {
             provider = config.out.zone.provider.set;
             type = "${toLower config.out.type}_record"
