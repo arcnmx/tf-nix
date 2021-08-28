@@ -159,14 +159,27 @@ in rec {
   inherit (dag) dagTopoSort dagEntryAfter dagEntryBefore dagEntryAnywhere;
   inherit (run) nixRunWrapper;
 
-  nixStoreUrl = config: {
-    user ? "root"
-  , attr ? "ipv4_address"
-  , host ? terraformOutput config resource attr
-  , resource ? null
+  genUrl = {
+    protocol
+  , host
+  , port ? null
+  , user ? null
+  , password ? null
   , path ? ""
-  , private_key_file
-  }: "ssh://${user}@${host}${path}?ssh-key=${private_key_file}";
+  , queryString ? if query != { } then concatStringsSep "&" (mapAttrsToList (k: v: "${k}=${v}") query) else null
+  , query ? { }
+  }: let
+    portDefaults = {
+      ssh = 22;
+      http = 80;
+      https = 443;
+    };
+    explicitPort = port != null && (portDefaults.${protocol} or 0) != port;
+    portStr = optionalString explicitPort ":${toString port}";
+    queryStr = optionalString (queryString != null) "?${queryString}";
+    passwordStr = optionalString (password != null) ":${password}";
+    creds = optionalString (user != null || password != null) "${toString user}${passwordStr}@";
+  in "${protocol}://${creds}${host}${portStr}${path}${queryStr}";
 
   # TODO: secrets from env or elsewhere
 

@@ -542,11 +542,14 @@
         selfPrefix = "\${self.";
         mapSelf = v: if isString v && hasInfix selfPrefix v then replaceStrings [ selfPrefix ] [ selfRef ] v else v;
       in mapAttrsRecursive (_: mapSelf) attrs';
-      nixStoreUrl = let
-        sshKey = optionalString (config.ssh.privateKeyFile != null) "?ssh-key=${config.ssh.privateKeyFile}";
-        # Waiting on fix for: https://github.com/NixOS/nix/issues/1994
-        port = optionalString (/*config.port != null*/false) ":${toString config.port}";
-      in "ssh://${config.out.ssh.destination}${port}${sshKey}";
+      nixStoreUrl = tf.genUrl {
+        protocol = "ssh";
+        host = config.out.ssh.destination;
+        inherit (config) port;
+        query = optionalAttrs (config.ssh.privateKeyFile != null) {
+          ssh-key = config.ssh.privateKeyFile;
+        };
+      };
       out.ssh = let
         bastionDestination =
           optionalString (config.ssh.bastion.user != null) "${config.ssh.bastion.user}@"
