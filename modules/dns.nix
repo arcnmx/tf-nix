@@ -308,7 +308,7 @@
             } else throw "unknown DNS record ${config.out.type}");
           };
           dns = let
-            name = config.out.domain;
+            name = config.domain;
             zone = config.out.zone.domain;
           in {
             provider = config.out.zone.provider.set;
@@ -316,14 +316,18 @@
               + optionalString (config.out.type != "CNAME" && config.out.type != "PTR") "_set";
             inputs = {
               A = {
-                inherit zone name;
+                inherit zone;
                 inherit (config) ttl;
                 addresses = singleton config.a.address;
+              } // optionalAttrs (name != null) {
+                inherit name;
               };
               AAAA = {
-                inherit zone name;
+                inherit zone;
                 inherit (config) ttl;
                 addresses = singleton config.aaaa.address;
+              } // optionalAttrs (name != null) {
+                inherit name;
               };
               MX = {
                 inherit zone;
@@ -334,9 +338,11 @@
                 };
               };
               TXT = {
-                inherit zone name;
+                inherit zone;
                 inherit (config) ttl;
                 txt = singleton config.txt.value;
+              } // optionalAttrs (name != null) {
+                inherit name;
               };
               CNAME = {
                 inherit zone name;
