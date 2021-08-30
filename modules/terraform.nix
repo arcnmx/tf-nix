@@ -545,7 +545,7 @@
       nixStoreUrl = tf.genUrl {
         protocol = "ssh";
         host = config.out.ssh.destination;
-        inherit (config) port;
+        #inherit (config) port; # https://github.com/NixOS/nix/issues/1994 was never fixed, nix doesn't parse ssh urls with ports
         query = optionalAttrs (config.ssh.privateKeyFile != null) {
           ssh-key = config.ssh.privateKeyFile;
         };
