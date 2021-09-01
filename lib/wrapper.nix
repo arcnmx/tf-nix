@@ -18,6 +18,11 @@
           set -- "$@" "$TF_CONFIG_DIR"
         ''}
         ;;
+      import)
+        ${optionalString (versionAtLeast version "0.14") ''
+          set -- -chdir="$TF_CONFIG_DIR" "$@"
+        ''}
+        ;;
     esac
     export TF_CLI_ARGS_import="''${TF_CLI_ARGS_import-} -config=$TF_CONFIG_DIR"
   fi
@@ -32,7 +37,7 @@
   if [[ -n ''${TF_STATE_FILE-} ]]; then
     ${concatMapStringsSep "\n" (k:
       "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -state=$TF_STATE_FILE\""
-    ) ([ "plan" "apply" "output" "destroy" "refresh" "taint" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" "replace_provider" ])}
+    ) ([ "plan" "apply" "output" "destroy" "refresh" "taint" "import" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" "replace_provider" ])}
   fi
   exec ${terraform}/bin/terraform "$@"
 ''
