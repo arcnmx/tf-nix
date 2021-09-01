@@ -163,7 +163,7 @@ in {
       map (r: dagFromString r.out.provider.out.hclPathStr) cfg.select.providers
       ++ map (o: dagFromString config.outputs.${o}.out.hclPathStr) cfg.select.outputs
       ++ (if cfg.select.hclPaths == null
-        then map (r: dagFromString r.out.hclPathStr) (filter (res: res.enable) (attrValues config.resources))
+        then map (r: dagFromString r.out.hclPathStr) (filter (res: res.enable && !res.dataSource) (attrValues config.resources))
         else map (res: dagFromString res) cfg.select.hclPaths
       );
   in {
