@@ -26,6 +26,21 @@
       connection = mkOption {
         type = tf.lib.tf.tfTypes.connectionType null;
       };
+      gcroot = {
+        enable = mkEnableOption "gcroot" // {
+          default = cfg.gcroot.enable;
+        };
+        name = mkOption {
+          type = types.str;
+          default = config.name;
+        };
+        path = mkOption {
+          type = types.path;
+          default = let
+            root = if cfg.gcroot.useProfiles then cfg.gcroot.profilePath else cfg.gcroot.gcrootPath;
+          in "${root}-${config.gcroot.name}";
+        };
+      };
       secrets = {
         files = mkOption {
           type = types.attrsOf types.unspecified;
@@ -54,6 +69,10 @@
           default = { };
         };
         switch = mkOption {
+          type = types.attrsOf types.str;
+          default = { };
+        };
+        gcroot = mkOption {
           type = types.attrsOf types.str;
           default = { };
         };
@@ -93,6 +112,9 @@
           secrets = config.secrets.refIds;
         };
         secrets = mapAttrs (_: mkOptionDefault) config.triggers.common;
+        gcroot = {
+          system = mkOptionDefault "${config.system}";
+        };
       };
       out.setResources =
         listToAttrs (concatLists (mapAttrsToList (key: file: let
@@ -198,6 +220,27 @@
             };
           in if config.isRemote then [ remote ] else [ local ];
         };
+        "${config.out.resourceName}_gcroot" = {
+          enable = config.gcroot.enable && config.isRemote;
+          provider = "null";
+          type = "resource";
+          inputs.triggers = config.triggers.gcroot;
+          provisioners = let
+            indirectGcroot = tf.terraform.dataDir != null;
+            gcrootTarget = if indirectGcroot
+              then tf.terraform.dataDir + "/gcroot-${config.gcroot.name}"
+              else config.gcroot.path;
+            setProfile = [
+              ''nix-env -p "${config.gcroot.path}" --set ${config.system}''
+            ] ++ optional indirectGcroot ''ln -sfn "${config.gcroot.path}" "${toString gcrootTarget}"'';
+            setGcroot = [
+              ''ln -sfn ${config.system} "${toString gcrootTarget}"''
+            ] ++ optional indirectGcroot ''ln -sfn "${toString gcrootTarget}" "${config.gcroot.path}"'';
+            commands = if cfg.gcroot.useProfiles then setProfile else setGcroot;
+          in singleton {
+            local-exec.command = concatStringsSep " && " commands;
+          };
+        };
       };
     };
   };
@@ -215,6 +258,33 @@ in {
       cacheDir = mkOption {
         type = types.path;
         default = tf.terraform.dataDir + "/secrets";
+      };
+    };
+    gcroot = {
+      enable = mkEnableOption "gcroots by default";
+      useProfiles = mkOption {
+        type = types.bool;
+        default = false;
+      };
+      user = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
+      name = mkOption {
+        type = types.str;
+        default = "tf";
+      };
+      profilePath = mkOption {
+        type = types.path;
+        default = "/nix/var/nix/profiles"
+        + optionalString (cfg.gcroot.user != null) "/per-user/${cfg.gcroot.user}"
+        + "/${cfg.gcroot.name}";
+      };
+      gcrootPath = mkOption {
+        type = types.path;
+        default = "/nix/var/nix/gcroots"
+        + optionalString (cfg.gcroot.user != null) "/per-user/${cfg.gcroot.user}"
+        + "/${cfg.gcroot.name}";
       };
     };
   };
