@@ -25,7 +25,7 @@
     };
 
     networking = {
-      hostName = mkDefault "";
+      hostName = mkOverride 1250 "";
     };
   };
 }
