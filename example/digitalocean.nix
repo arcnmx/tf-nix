@@ -1,4 +1,4 @@
-{ config, ... }: let
+{ lib, config, ... }: with lib; let
   inherit (config.lib.tf) terraformSelf;
   res = config.resources;
 in {
