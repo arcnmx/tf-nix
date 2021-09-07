@@ -10,6 +10,10 @@
     };
   };
   pathType = types.str; # types.path except that ${} expressions work too (and also sometimes relative paths?)
+  stringType = types.str;
+  jsonType = with types; nullOr (oneOf [ bool int float stringType (listOf jsonType) (attrsOf jsonType) ]) // {
+    description = "json data";
+  };
   providerReferenceType' = types.submodule ({ config, ... }: let
     split = splitString "." config.reference;
   in {
@@ -93,7 +97,7 @@
         example = "instance";
       };
       inputs = mkOption {
-        type = types.attrsOf types.unspecified;
+        type = types.attrsOf jsonType;
         default = { };
         example = {
           instance_type = "t2.micro";
@@ -141,6 +145,10 @@
         type = types.attrsOf types.unspecified;
         readOnly = true;
       };
+      outputAttrNames = mkOption {
+        type = types.listOf types.str;
+        default = attrNames config.inputs;
+      };
       out = {
         resourceKey = mkOption {
           type = types.str;
@@ -177,6 +185,12 @@
         type = types.unspecified;
         internal = true;
       };
+      ref = mkOption {
+        type = types.unspecified;
+      };
+      attr = mkOption {
+        type = types.unspecified;
+      };
     };
 
     config = {
@@ -187,8 +201,8 @@
         hclPath = [ config.out.dataType config.out.resourceKey config.name ];
         hclPathStr = concatStringsSep "." config.out.hclPath;
       };
-      refAttr = attr: tf.terraformContext false config.out.hclPathStr attr
-        + tf.terraformExpr "${config.out.reference}${optionalString (attr != null) ".${attr}"}";
+      /*refAttr = attr: tf.terraformContext false config.out.hclPathStr attr
+        + tf.terraformExpr "${config.out.reference}${optionalString (attr != null) ".${attr}"}";*/
       hcl = config.inputs // optionalAttrs (config.count != 1) {
         inherit (config) count;
       } // optionalAttrs (config.provisioners != [ ]) {
@@ -210,18 +224,42 @@
           ignore_changes = config.lifecycle.ignoreChanges;
         };
       };
-      getAttr = mkOptionDefault (attr: let
+      /*getAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
         attrPath = splitString "." attr;
         fallback = throw "${attr} on ${config.out.reference} not found";
-      in (ctx + optionalString exists (attrByPath attrPath fallback tconfig.state.resources.${config.out.reference})));
-      importAttr = mkOptionDefault (attr: let
+      in (ctx + optionalString exists (attrByPath attrPath fallback tconfig.state.resources.${config.out.reference})));*/
+      /*importAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
-      in if exists then tconfig.state.resources.${config.out.reference}.${attr} else throw "imported resource ${config.out.reference} not found");
-      namedRef = tf.terraformContext false config.out.hclPathStr null
-        + config.out.reference;
+      in if exists then tconfig.state.resources.${config.out.reference}.${attr} else throw "imported resource ${config.out.reference} not found");*/
+      refAttr = attr: (config.ref attr).expression;
+      getAttr = attr: (config.ref attr).string;
+      importAttr = attr: (config.ref attr).get;
+      /*namedRef = tf.terraformContext false config.out.hclPathStr null
+        + config.out.reference;*/
+      attr = genAttrs config.ref config.outputAttrNames;
+      ref = attr: let
+        exists = tconfig.state.resources ? ${config.out.reference};
+        context = tf.terraformContext exists config.out.hclPathStr attr;
+        attrPath = splitString "." attr;
+        ref = config.out.reference + optionalString (attr != null) ".${attr}";
+        fallback = throw "${attr} on ${config.out.reference} not found";
+        state = tconfig.state.resources.${config.out.reference};
+        value = if attr != null then attrByPath attrPath fallback state else state;
+        expression = context + tf.terraformExpr ref;
+      in {
+        inherit attr exists context value expression;
+        ref = context + ref;
+        string = context + optionalString exists value;
+        get = if exists then value else throw "resource ${config.out.reference} not found";
+
+        _type = "merge";
+        contents = singleton expression;
+
+        __toString = self: expression;
+      };
     };
   });
   provisionerType = types.submodule ({ config, ... }: {
@@ -590,7 +628,7 @@
         default = if name == config.type then null else name;
       };
       inputs = mkOption {
-        type = types.attrsOf types.unspecified;
+        type = types.attrsOf jsonType;
         default = { };
       };
       source = mkOption {
@@ -851,7 +889,7 @@
         default = { };
       };
       inputs = mkOption {
-        type = types.attrsOf types.unspecified;
+        type = types.attrsOf jsonType;
         default = { };
       };
       # TODO: count, for_each, lifecycle
@@ -1069,6 +1107,7 @@ in {
           TF_CLI_ARGS_init = mkIf (versionAtLeast config.terraform.version "0.14") "-lockfile=readonly";
           TF_CLI_ARGS_refresh = "-compact-warnings";
           TF_CLI_ARGS_state_replace_provider = "-auto-approve";
+          TF_CLI_ARGS_providers_schema = "-json";
           TF_CLI_ARGS_apply = mkMerge ([
             "-compact-warnings"
             "-refresh=${if config.terraform.refreshOnApply then "true" else "false"}"

@@ -102,6 +102,7 @@
   , hcl
   , terraform ? pkgs.buildPackages.terraform
   , generateLockfile ? versionAtLeast terraform.version or (builtins.parseDrvName terraform.name).version "0.14"
+  , pluginDirectory ? "${terraform /* TODO resolve this properly if spliced */}/plugins"
   }: pkgs.stdenvNoCC.mkDerivation {
     name = "${name}.tf.json";
     allowSubstitutes = false;
@@ -116,10 +117,35 @@
       install -Dm0644 $hclPath $out/$name
     '' + optionalString generateLockfile ''
       terraform -chdir=$out providers lock \
-        -fs-mirror=${terraform /* TODO resolve this properly if spliced */}/plugins \
+        -fs-mirror=${pluginDirectory} \
         -platform=${terraform.stdenv.hostPlatform.parsed.kernel.name + "_" + {
         x86-64 = "amd64";
       }.${terraform.stdenv.hostPlatform.parsed.cpu.arch} or (throw "unknown tf arch")}
+    '';
+  };
+  providerSchema = {
+    name ? "x"
+  , terraform ? pkgs.buildPackages.terraform
+  , required_providers
+  }: pkgs.stdenvNoCC.mkDerivation {
+    name = "terraform-${name}.json";
+    allowSubstitutes = false;
+    preferLocalBuild = true;
+
+    nativeBuildInputs = [ terraform ];
+    hcl = hclDir {
+      name = "providers-${name}";
+      inherit terraform;
+      generateLockfile = true;
+      hcl = {
+        terraform = {
+          inherit required_providers;
+        };
+      };
+    };
+
+    buildCommand = ''
+      terraform -chdir=$hcl providers schema -json > $out
     '';
   };
 
