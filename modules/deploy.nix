@@ -120,7 +120,7 @@
         listToAttrs (concatLists (mapAttrsToList (key: file: let
           name = "${config.name}_${tf.lib.tf.terraformIdent key}";
           source = if file.source != null then toString file.source else tf.resources."${name}_file".refAttr "filename";
-        in singleton (nameValuePair name {
+        in [ (nameValuePair name {
           provider = "null";
           type = "resource";
           connection = mkIf config.isRemote config.connection.set;
@@ -171,7 +171,8 @@
               ];
             };
           } ];
-        }) ++ optional (file.source == null) (nameValuePair "${name}_file" {
+        }) (nameValuePair "${name}_file" {
+          enable = file.source == null;
           provider = "local";
           type = "file";
           inputs = {
@@ -179,7 +180,7 @@
             sensitive_content = file.text;
             file_permission = "0600";
           };
-        })) config.secrets.files)) // {
+        }) ]) config.secrets.files)) // {
         "${config.out.resourceName}_copy" = {
           provider = "null";
           type = "resource";
