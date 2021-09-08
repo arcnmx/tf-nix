@@ -83,8 +83,12 @@
         unmount = [
           "/boot"
         ];
-        mount = mkIf (config.nixosConfig.fileSystems ? "/boot") [
-          "/boot"
+        mount = let
+          inherit (config.nixosConfig.boot.loader.efi) efiSysMountPoint;
+          mountEsp = config.nixosConfig.boot.loader.grub.efiSupport && efiSysMountPoint != "/boot";
+        in mkMerge [
+          (mkIf (config.nixosConfig.fileSystems ? "/boot") [ "/boot" ])
+          (mkIf (mountEsp && config.nixosConfig.fileSystems ? ${efiSysMountPoint}) [ efiSysMountPoint ])
         ];
         scripts = {
           install = ''
