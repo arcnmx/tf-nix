@@ -118,7 +118,12 @@
 
             find /boot -type f -delete
             umount -Rq ${escapeShellArgs config.lustrate.unmount} || true
-          '' + concatMapStringsSep "\n" (mount: "mount ${escapeShellArgs [ config.nixosConfig.fileSystems.${mount}.device mount ]}") config.lustrate.mount;
+          '' + concatMapStringsSep "\n" (mount: let
+            fs = config.nixosConfig.fileSystems.${mount};
+          in ''
+            mkdir -p ${escapeShellArg fs.mountPoint} &&
+            mount ${escapeShellArgs [ fs.device fs.mountPoint ]}
+          '') config.lustrate.mount;
           prepare = ''
             #!/usr/bin/env bash
             set -eu
