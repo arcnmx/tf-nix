@@ -106,10 +106,10 @@ in {
       server = {
         provider = "oci";
         type = "core_instance";
-        #lifecycle.ignoreChanges = [
-        #  "metadata.ssh_authorized_keys" # docs say it can't change
-        #  "metadata.user_data" # docs say it can't change
-        #];
+        lifecycle.ignoreChanges = [
+          # changes to `ssh_authorized_keys` or `user_data` cause the instance to be recreated
+          "metadata"
+        ];
         connection = {
           host = terraformSelf "public_ip";
           ssh = {
