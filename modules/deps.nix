@@ -203,6 +203,7 @@ in {
       environment = mkIf cfg.enable {
         TF_CONFIG_DIR = mkDefault "${hclDir {
           inherit (cfg) hcl;
+          inherit (config.terraform) prettyJson;
           terraform = config.terraform.packageWithPlugins;
         }}";
       };

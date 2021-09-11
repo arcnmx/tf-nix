@@ -989,6 +989,10 @@ in {
         type = types.bool;
         default = true;
       };
+      prettyJson = mkOption {
+        type = types.bool;
+        default = false;
+      };
       logLevel = mkOption {
         type = types.enum [ "TRACE" "DEBUG" "INFO" "WARN" "ERROR" "" ];
         default = "";
@@ -1058,6 +1062,7 @@ in {
         ) (filterAttrs (_: var: var.value.shellCommand != null) config.variables) // {
           TF_CONFIG_DIR = mkOptionDefault "${tf.hclDir {
             inherit (config) hcl;
+            inherit (config.terraform) prettyJson;
             terraform = config.terraform.packageWithPlugins;
           }}";
           TF_LOG_PATH = mkIf (config.terraform.logPath != null) (mkOptionDefault (toString config.terraform.logPath));

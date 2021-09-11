@@ -101,17 +101,22 @@
     name ? "terraform"
   , hcl
   , terraform ? pkgs.buildPackages.terraform
+  , jq ? pkgs.buildPackages.jq
   , generateLockfile ? versionAtLeast terraform.version or (builtins.parseDrvName terraform.name).version "0.14"
+  , prettyJson ? false
   }: pkgs.stdenvNoCC.mkDerivation {
     name = "${name}.tf.json";
     allowSubstitutes = false;
     preferLocalBuild = true;
 
-    nativeBuildInputs = optional generateLockfile terraform;
+    nativeBuildInputs = optional generateLockfile terraform ++ optional prettyJson jq;
     passAsFile = [ "hcl" "script" "buildCommand" ];
     hcl = toJSON hcl;
 
-    buildCommand = ''
+    buildCommand = optionalString prettyJson ''
+      jq -M . $hclPath > pretty.json
+      hclPath=pretty.json
+    '' + ''
       mkdir -p $out
       install -Dm0644 $hclPath $out/$name
     '' + optionalString generateLockfile ''
