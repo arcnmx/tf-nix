@@ -1,14 +1,24 @@
 isNixos: { pkgs, config, lib, ... }: with lib; let
   cfg = config.secrets;
-  activationScript = concatStringsSep "\n" (mapAttrsToList (_: f: let
-      source = if f.source != null
-        then f.source
-        else builtins.toFile f.fileName f.text;
-    in "${pkgs.coreutils}/bin/install -dm0755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${toString f.out.root}" +
-      "\n${pkgs.coreutils}/bin/install -dm7755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${toString f.out.dir}" +
-      optionalString (!f.external) "\n${pkgs.coreutils}/bin/install -m${f.mode} -o ${f.owner} -g ${f.group} ${source} ${toString f.path}" +
-      optionalString (f.external) "\n${pkgs.coreutils}/bin/chown ${f.owner}:${f.group} ${toString f.path}"
-    ) config.secrets.files);
+  activationScript = concatStringsSep "\n" (concatLists (mapAttrsToList (_: f: let
+    source = if f.source != null
+      then f.source
+      else builtins.toFile f.fileName f.text;
+    external = ''
+      if [[ ! -e ${toString f.path} ]]; then
+        echo "WARN: secret at ${toString f.path} does not exist" >&2
+      else
+        ${pkgs.coreutils}/bin/chown ${f.owner}:${f.group} ${toString f.path}
+      fi
+    '';
+    embedded = ''
+      ${pkgs.coreutils}/bin/install -m${f.mode} -o ${f.owner} -g ${f.group} ${source} ${toString f.path}
+    '';
+  in [
+    "${pkgs.coreutils}/bin/install -dm0755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${toString f.out.root}"
+    "${pkgs.coreutils}/bin/install -dm7755 -o ${f.out.rootOwner} -g ${f.out.rootGroup} ${toString f.out.dir}"
+    (if f.external then external else embedded)
+  ]) config.secrets.files));
   fileType = types.submodule ({ name, config, ... }: {
     options = {
       text = mkOption {
