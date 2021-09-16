@@ -1,4 +1,4 @@
-{ modulesPath, config, lib, ... }: with lib; let
+{ modulesPath, pkgs, config, lib, ... }: with lib; let
   cfg = config.virtualisation.digitalOcean;
 in {
   imports = [
