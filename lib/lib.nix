@@ -1,7 +1,7 @@
 { pkgs, config, lib }: with builtins; with lib; let
   terraformExpr = expr: "\${${expr}}";
   terraformSelf = attr: terraformExpr "self.${attr}";
-  terraformIdent = id: replaceStrings [ "." ] [ "_" ] id; # https://www.terraform.io/docs/configuration/syntax.html#identifiers
+  terraformIdent = id: replaceStrings [ "." ":" "/" ] [ "_" "_" "_" ] id; # https://www.terraform.io/docs/configuration/syntax.html#identifiers
   # get all input context/dependencies for a derivation
   # https://github.com/NixOS/nix/issues/1245#issuecomment-401642781
   storeDirRe = replaceStrings [ "." ] [ "\\." ] builtins.storeDir;
@@ -173,6 +173,7 @@ in rec {
   , path ? ""
   , queryString ? if query != { } then concatStringsSep "&" (mapAttrsToList (k: v: "${k}=${v}") query) else null
   , query ? { }
+  , isUrl ? true
   }: let
     portDefaults = {
       ssh = 22;
@@ -183,12 +184,9 @@ in rec {
     portStr = optionalString explicitPort ":${toString port}";
     queryStr = optionalString (queryString != null) "?${queryString}";
     passwordStr = optionalString (password != null) ":${password}";
+    protocolStr = protocol + ":" + optionalString isUrl "//";
     creds = optionalString (user != null || password != null) "${toString user}${passwordStr}@";
-  in "${protocol}://${creds}${host}${portStr}${path}${queryStr}";
+  in "${protocolStr}${creds}${host}${portStr}${path}${queryStr}";
 
   # TODO: secrets from env or elsewhere
-
-  terraformModule = { config, ... }: {
-    imports = [ ./terraform.nix ];
-  };
 }
