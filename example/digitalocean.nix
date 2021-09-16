@@ -10,7 +10,7 @@ in {
 
   config = {
     # NOTE: if not using NIXOS_LUSTRATE, images must be uploaded manually, and can be built with:
-    # nix-build '<tf>' -A config.baseImage.digitalOceanImage --arg config ./example/digitalocean.nix
+    # nix-build '<tf>' -A baseImage.system.build.digitalOceanImage --arg config ./example/digitalocean.nix
     # ... then upload it via web interface as "nixos-image-example" as used below.
     deploy.systems.system.lustrate = {
       enable = true;
@@ -79,9 +79,10 @@ in {
         };
       };
     };
-    baseImage = { modulesPath, ... }: {
+    baseImage = { tfModules, modulesPath, ... }: {
       imports = [
         (modulesPath + "/virtualisation/digital-ocean-image.nix")
+        tfModules.nixos.digitalocean
       ];
       config = {
         virtualisation.digitalOceanImage.compressionMethod = "bzip2";
