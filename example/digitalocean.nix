@@ -49,6 +49,7 @@ in {
 
     variables.do_token = {
       type = "string";
+      sensitive = true;
       # populate variable using https://www.passwordstore.org/
       #value.shellCommand = "pass show tokens/digitalocean";
     };
