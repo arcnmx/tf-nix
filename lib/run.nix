@@ -3,6 +3,7 @@
     preferLocalBuild = true;
     allowSubstitutes = false;
     name = "nix-run-wrapper-${binName}";
+    meta.mainProgram = "run";
     defaultCommand = "bash"; # `nix run` execvp's bash by default
     inherit binName;
     inherit runtimeShell;
@@ -60,7 +61,9 @@
         ln -s $package/bin $out/bin
       fi
     '';
-    meta = package.meta or {};
+    meta = package.meta or {} // {
+      mainProgram = binName;
+    };
     passthru = package.passthru or {};
   };
 }
