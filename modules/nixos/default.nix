@@ -1,4 +1,5 @@
 {
+  compat = ./compat.nix;
   secrets = ./secrets.nix;
   secrets-users = ./secrets-users.nix;
   run = ../run.nix;
@@ -19,6 +20,7 @@
 
   __functor = self: { ... }: {
     imports = with self; [
+      compat
       secrets
       secrets-users
       run
