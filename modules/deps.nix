@@ -107,7 +107,7 @@ in {
         readOnly = true;
       };
       doneCommand = mkOption {
-        type = types.str;
+        type = types.lines;
         default = "";
       };
     };
