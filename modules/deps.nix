@@ -106,6 +106,10 @@ in {
         type = types.package;
         readOnly = true;
       };
+      initCommand = mkOption {
+        type = types.lines;
+        defaultText = "terraform init";
+      };
       doneCommand = mkOption {
         type = types.lines;
         default = "";
@@ -188,12 +192,12 @@ in {
           set -eu
 
           export ${config.continue.envVar}='${toJSON config.continue.output.json}'
-        '' + optionalString (!config.continue.present) ''
-          ${config.terraform.cli}/bin/terraform init
-        '' + optionalString (config.continue.present) ''
+        '' + optionalString (!config.continue.present) cfg.apply.initCommand
+        + "\n" + optionalString (config.continue.present) ''
           export TF_TARGETS="${concatStringsSep " " targets}"
           ${config.terraform.cli}/bin/terraform apply "$@"
         '' + (if !config.continue.present || !cfg.isComplete then escapeShellArgs config.runners.lazy.run.apply.out.runArgs + '' "$@"'' else cfg.apply.doneCommand));
+        initCommand = "${config.terraform.cli}/bin/terraform init";
       };
     };
     continue.output.populatedTargets = mkIf cfg.enable (
