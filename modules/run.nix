@@ -38,7 +38,7 @@
     options = {
       nixRun = mkOption {
         type = types.listOf types.str;
-        default = [ "nix" "run" ];
+        default = [ "${pkgs.nix_2_3 or pkgs.nix}/bin/nix" "run" ];
       };
       name = mkOption {
         type = types.str;
