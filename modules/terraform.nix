@@ -709,6 +709,10 @@
         type = types.bool;
         default = false;
       };
+      export = mkOption {
+        type = types.bool;
+        default = false;
+      };
       value = {
         shellCommand = mkOption {
           type = types.nullOr types.str;
@@ -737,6 +741,10 @@
         type = types.str;
         readOnly = true;
       };
+      get = mkOption {
+        type = types.str;
+        readOnly = true;
+      };
     };
 
     config = {
@@ -753,6 +761,9 @@
       };
       ref = tf.terraformContext false config.out.hclPathStr null
         + tf.terraformExpr config.out.reference;
+      get = if !config.export
+        then throw "${config.name} must have `export = true`"
+        else tconfig.resources.tfnix-exports.getAttr "result.${config.name}";
     };
   });
   outputType = types.submodule ({ name, config, ... }: {
@@ -1082,6 +1093,18 @@ in {
           TF_INPUT = mkOptionDefault (if config.terraform.inputPrompt then "1" else "0");
           TF_LOG = mkOptionDefault config.terraform.logLevel;
         };
+    };
+    resources.tfnix-exports = let
+      vars = filterAttrs (_: var: var.export) config.variables;
+    in {
+      enable = vars != { };
+      provider = "external";
+      type = "";
+      dataSource = true;
+      inputs = {
+        program = [ "${pkgs.coreutils}/bin/cat" ];
+        query = mapAttrs' (_: var: nameValuePair var.name var.ref) vars;
+      };
     };
     hcl = {
       resource = let
