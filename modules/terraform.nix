@@ -181,7 +181,7 @@
 
     config = {
       out = {
-        resourceKey = "${config.provider.type}_${config.type}";
+        resourceKey = config.provider.type + optionalString (config.type != "") "_${config.type}";
         dataType = if config.dataSource then "data" else "resource";
         reference = optionalString config.dataSource "data." + config.out.resourceKey + ".${config.name}";
         hclPath = [ config.out.dataType config.out.resourceKey config.name ];
