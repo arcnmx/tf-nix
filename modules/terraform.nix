@@ -962,7 +962,7 @@ in {
     terraform = {
       version = mkOption {
         type = types.enum [ "0.11" "0.12" "0.13" "0.14" "0.15" "1.0" ];
-        default = if pkgs ? terraform_1_0 then "1.0" else "0.13";
+        default = if pkgs ? terraform_1 || pkgs ? terraform_1_0 then "1.0" else "0.13";
       };
       package = mkOption {
         type = types.package;
@@ -1041,7 +1041,7 @@ in {
         "0.13" = pkgs.terraform_0_13;
         "0.14" = pkgs.terraform_0_14;
         "0.15" = pkgs.terraform_0_15;
-        "1.0" = pkgs.terraform_1_0;
+        "1.0" = pkgs.terraform_1 or pkgs.terraform_1_0;
       }.${config.terraform.version};
       package = config.terraform.wrapper config.terraform.packageWithPlugins;
       packageWithPlugins = let
