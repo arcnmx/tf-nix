@@ -97,6 +97,10 @@
     if isString v then setContext (context // getContext v) v else v
   ) (fromJSON json');
 
+  providerPrefix = if versionAtLeast (versions.majorMinor version) "22.05"
+    # this was changed in https://github.com/NixOS/nixpkgs/pull/155477
+    then "libexec/terraform-providers"
+    else "plugins";
   hclDir = {
     name ? "terraform"
   , hcl
@@ -121,7 +125,7 @@
       install -Dm0644 $hclPath $out/$name
     '' + optionalString generateLockfile ''
       terraform -chdir=$out providers lock \
-        -fs-mirror=${terraform /* TODO resolve this properly if spliced */}/plugins \
+        -fs-mirror=${terraform /* TODO resolve this properly if spliced */}/${providerPrefix} \
         -platform=${terraform.stdenv.hostPlatform.parsed.kernel.name + "_" + {
         x86-64 = "amd64";
       }.${terraform.stdenv.hostPlatform.parsed.cpu.arch} or (throw "unknown tf arch")}
