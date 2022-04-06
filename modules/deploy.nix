@@ -174,10 +174,10 @@
         }) (nameValuePair "${name}_file" {
           enable = file.source == null;
           provider = "local";
-          type = "file";
+          type = "sensitive_file";
           inputs = {
             filename = "${toString config.secrets.cacheDir}/${name}.secret";
-            sensitive_content = file.text;
+            content = file.text;
             file_permission = "0600";
           };
         }) ]) config.secrets.files)) // {

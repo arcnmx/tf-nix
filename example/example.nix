@@ -15,13 +15,12 @@ in {
 
       access_file = {
         # shorthand to avoid specifying the provider:
-        #type = "local.file";
+        #type = "local.sensitive_file";
         provider = "local";
-        type = "file";
+        type = "sensitive_file";
         inputs = {
-          sensitive_content = res.access_key.refAttr "private_key_pem";
+          content = res.access_key.refAttr "private_key_pem";
           filename = "${toString config.paths.dataDir}/access.private.pem";
-          file_permission = "0500";
         };
       };
 
