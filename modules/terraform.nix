@@ -73,7 +73,7 @@
     options = {
       name = mkOption {
         type = types.str;
-        default = name;
+        default = tf.terraformIdent name;
       };
       enable = mkOption {
         type = types.bool;
