@@ -1,5 +1,5 @@
 { config, pkgs, lib, ... }: with lib; let
-  inherit (import ../lib/run.nix { inherit pkgs; }) nixRunWrapper;
+  inherit (import ../lib/run.nix { inherit (cfg) pkgs; }) nixRunWrapper;
   cfg = config.runners;
   runType = types.submodule ({ config, name, ... }: {
     options = {
@@ -28,7 +28,7 @@
     };
     config = {
       runner = mkOptionDefault (nixRunWrapper config.executable config.package);
-      package = mkOptionDefault (pkgs.writeShellScriptBin config.executable config.command);
+      package = mkOptionDefault (cfg.pkgs.writeShellScriptBin config.executable config.command);
       set = {
         inherit (config) package executable name;
       };
@@ -38,7 +38,7 @@
     options = {
       nixRun = mkOption {
         type = types.listOf types.str;
-        default = [ "${pkgs.nix_2_3 or pkgs.nix}/bin/nix" "run" ];
+        default = [ "${cfg.pkgs.nix_2_3 or cfg.pkgs.nix}/bin/nix" "run" ];
       };
       name = mkOption {
         type = types.str;
@@ -82,6 +82,11 @@
 in {
   options = {
     runners = {
+      pkgs = mkOption {
+        type = types.unspecified;
+        default = pkgs.buildPackages;
+        defaultText = "pkgs.buildPackages";
+      };
       lazy = {
         file = mkOption {
           type = types.nullOr types.path;
@@ -122,7 +127,7 @@ in {
       } // {
         inherit (cfg.lazy) args;
       })) cfg.run;
-      nativeBuildInputs = mapAttrsToList (k: v: pkgs.writeShellScriptBin v.name ''
+      nativeBuildInputs = mapAttrsToList (k: v: cfg.pkgs.writeShellScriptBin v.name ''
         exec ${escapeShellArgs v.out.runArgs} "$@"
       '') cfg.lazy.run;
     };
