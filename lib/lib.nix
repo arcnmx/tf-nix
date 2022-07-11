@@ -127,8 +127,9 @@
       terraform -chdir=$out providers lock \
         -fs-mirror=${terraform /* TODO resolve this properly if spliced */}/${providerPrefix} \
         -platform=${terraform.stdenv.hostPlatform.parsed.kernel.name + "_" + {
-        x86-64 = "amd64";
-      }.${terraform.stdenv.hostPlatform.parsed.cpu.arch} or (throw "unknown tf arch")}
+        x86_64 = "amd64";
+        aarch64 = "arm64";
+      }.${terraform.stdenv.hostPlatform.parsed.cpu.name} or (throw "unknown tf arch")}
     '';
   };
 
