@@ -44,7 +44,7 @@
       secrets = {
         files = mkOption {
           type = types.attrsOf types.unspecified;
-          default = [ ];
+          default = { };
         };
         refIds = mkOption {
           type = types.separatedString "";
