@@ -9,9 +9,10 @@
 }: with lib; writeShellScriptBin "terraform" ''
   set -eu
 
+  TF_COMMAND=''${1-}
   if [[ -n ''${TF_CONFIG_DIR-} ]]; then
-    case ''${1-} in
-      init|plan|apply|destroy|providers|graph|refresh)
+    case $TF_COMMAND in
+      init|plan|apply|destroy|providers|graph|refresh|show)
         ${if versionAtLeast version "0.14" then ''
           set -- -chdir="$TF_CONFIG_DIR" "$@"
         '' else ''
@@ -38,6 +39,9 @@
     ${concatMapStringsSep "\n" (k:
       "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -state=$TF_STATE_FILE\""
     ) ([ "plan" "apply" "output" "destroy" "refresh" "taint" "import" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" "replace_provider" ])}
+    if [[ $TF_COMMAND = show ]]; then
+      set -- "$@" "$TF_STATE_FILE"
+    fi
   fi
   exec ${terraform}/bin/terraform "$@"
 ''
