@@ -219,7 +219,9 @@
       importAttr = mkOptionDefault (attr: let
         ctx = tf.terraformContext exists config.out.hclPathStr attr;
         exists = tconfig.state.resources ? ${config.out.reference};
-      in if exists then tconfig.state.resources.${config.out.reference}.${attr} else throw "imported resource ${config.out.reference} not found");
+        attrPath = splitString "." attr;
+        fallback = throw "${attr} on imported resource ${config.out.reference} not found";
+      in if exists then attrByPath attrPath fallback tconfig.state.resources.${config.out.reference} else throw "imported resource ${config.out.reference} not found");
       namedRef = tf.terraformContext false config.out.hclPathStr null
         + config.out.reference;
     };
