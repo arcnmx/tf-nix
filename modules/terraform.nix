@@ -1058,7 +1058,9 @@ in {
             inherit (p) source version;
           });
         }) config.providers
-        ++ mapAttrsToList (_: r: { ${r.provider.type} = { }; }) config.resources
+        ++ mapAttrsToList (_: r: { ${r.provider.type} = { }; }) (
+          filterAttrs (_: r: r.provider.type != "terraform") config.resources
+        )
       );
       cli = let
         vars = config.terraform.environment;
