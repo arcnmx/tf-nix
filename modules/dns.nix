@@ -291,7 +291,7 @@
               data = {
                 service = "_${config.srv.service}";
                 proto = "_${config.srv.proto}";
-                name = config.out.domain;
+                name = config.out.fqdn;
                 inherit (config.srv) priority weight port target;
               };
             } else if config.out.type == "A" then {
