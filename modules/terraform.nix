@@ -643,9 +643,12 @@
       };
       source = mkOption {
         type = types.nullOr types.str;
-        default =
-          if versionAtLeast tconfig.terraform.version "0.13" && tconfig.terraform.packageUnwrapped ? plugins.${config.type}.provider-source-address
-          then tconfig.terraform.packageUnwrapped.plugins.${config.type}.provider-source-address
+        default = let
+          plugin = tconfig.terraform.packageUnwrapped.plugins.${config.type} or null;
+        in if versionAtLeast tconfig.terraform.version "0.13" && plugin ? provider-source-address
+          then plugin.provider-source-address
+          # hack around https://github.com/NixOS/nixpkgs/pull/203000 changes
+          else if plugin.homepage or "" != "" then replaceStrings [ "https://registry" ".io/providers" ] [ "registry" ".io" ] plugin.homepage
           else "nixpkgs/${config.type}";
       };
       version = mkOption {
