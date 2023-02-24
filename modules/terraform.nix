@@ -124,6 +124,10 @@
           type = types.bool;
           default = false;
         };
+        replaceTriggeredBy = mkOption {
+          type = types.listOf types.str;
+          default = [ ];
+        };
       };
       connection = mkOption {
         type = types.nullOr (connectionType config);
@@ -208,6 +212,8 @@
           prevent_destroy = true;
         } // optionalAttrs (config.lifecycle.ignoreChanges != [ ]) {
           ignore_changes = config.lifecycle.ignoreChanges;
+        } // optionalAttrs (config.lifecycle.replaceTriggeredBy != [ ]) {
+          replace_triggered_by = config.lifecycle.replaceTriggeredBy;
         };
       };
       getAttr = mkOptionDefault (attr: let
