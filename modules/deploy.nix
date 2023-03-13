@@ -121,10 +121,10 @@
           name = "${config.name}_${tf.lib.tf.terraformIdent key}";
           source = if file.source != null then toString file.source else tf.resources."${name}_file".refAttr "filename";
         in [ (nameValuePair name {
-          provider = "null";
-          type = "resource";
+          provider = "terraform";
+          type = "data";
           connection = mkIf config.isRemote config.connection.set;
-          inputs.triggers = {
+          inputs.triggers_replace = {
             inherit (file) sha256 owner group mode;
             path = toString file.path;
           } // optionalAttrs (file.source == null) {
@@ -182,10 +182,12 @@
           };
         }) ]) config.secrets.files)) // {
         "${config.out.resourceName}_copy" = {
-          provider = "null";
-          type = "resource";
+          provider = "terraform";
+          type = "data";
           connection = mkIf config.isRemote config.connection.set;
-          inputs.triggers = config.triggers.copy;
+          inputs.triggers_replace = {
+            inherit (config.triggers) copy;
+          };
           provisioners = mkIf config.isRemote [ {
             # wait for remote host to come online
             type = "remote-exec";
@@ -199,10 +201,12 @@
           } ];
         };
         "${config.out.resourceName}_switch" = {
-          provider = "null";
-          type = "resource";
+          provider = "terraform";
+          type = "data";
           connection = mkIf config.isRemote config.connection.set;
-          inputs.triggers = config.triggers.switch;
+          inputs.triggers_replace = {
+            inherit (config.triggers) switch;
+          };
           provisioners = let
             commands = [
               "nix-env -p /nix/var/nix/profiles/system --set ${config.system}"
@@ -223,9 +227,11 @@
         };
         "${config.out.resourceName}_gcroot" = {
           enable = config.gcroot.enable && config.isRemote;
-          provider = "null";
-          type = "resource";
-          inputs.triggers = config.triggers.gcroot;
+          provider = "terraform";
+          type = "data";
+          inputs.triggers_replace = {
+            inherit (config.triggers) gcroot;
+          };
           provisioners = let
             indirectGcroot = tf.terraform.dataDir != null;
             gcrootTarget = if indirectGcroot
