@@ -437,7 +437,7 @@
         agent = {
           enabled = mkOption {
             type = types.bool;
-            default = true;
+            default = config.ssh.privateKey == null;
           };
           identity = mkOption {
             type = types.nullOr types.str;
@@ -472,6 +472,14 @@
           certificate = mkOption {
             type = types.nullOr types.str;
             default = null;
+          };
+        };
+        cli = {
+          extraOpts = mkOption {
+            type = types.attrsOf types.str;
+          };
+          extraArgs = mkOption {
+            type = types.listOf types.str;
           };
         };
       };
@@ -558,6 +566,17 @@
           ssh-key = config.ssh.privateKeyFile;
         };
       };
+      ssh.cli = {
+        extraOpts = {
+          UpdateHostKeys = "no";
+          StrictHostKeyChecking = "off";
+          UserKnownHostsFile = "/dev/null";
+          IdentitiesOnly = mkIf (!config.ssh.agent.enabled) "yes";
+        };
+        extraArgs = [
+          "-q" "-F" "none"
+        ] ++ concatLists (mapAttrsToList (key: value: [ "-o" "${key}=${value}" ]) config.ssh.cli.extraOpts);
+      };
       out.ssh = let
         bastionDestination =
           optionalString (config.ssh.bastion.user != null) "${config.ssh.bastion.user}@"
@@ -565,8 +584,8 @@
           + optionalString (config.ssh.bastion.port != null) ":${toString config.ssh.bastion.port}";
       in {
         nixStoreOpts = concatStringsSep " " config.out.ssh.cliArgs;
-        opts = {
-          UpdateHostKeys = "no";
+        opts = config.ssh.cli.extraOpts
+        // {
           User = if config.user == null then "root" else config.user;
           # TODO: cert and hostkey
         } // optionalAttrs (config.ssh.bastion.host != null) {
@@ -575,14 +594,15 @@
           Port = toString config.port;
         } // optionalAttrs (config.ssh.privateKeyFile != null) {
           IdentityFile = config.ssh.privateKeyFile;
+          IdentitiesOnly = "yes";
         };
-        cliArgs =
-          [ "-q" "-F" "none"
-            "-o" "StrictHostKeyChecking=off"
-            "-o" "UserKnownHostsFile=/dev/null"
-          ] ++ optionals (config.ssh.bastion.host != null) [ "-J" bastionDestination ]
+        cliArgs = config.ssh.cli.extraArgs
+          ++ optionals (config.ssh.bastion.host != null) [ "-J" bastionDestination ]
           ++ optionals (config.port != null) [ "-p" (toString config.port) ]
-          ++ optionals (config.ssh.privateKeyFile != null) [ "-i" config.ssh.privateKeyFile ];
+          ++ optionals (config.ssh.privateKeyFile != null) [
+            "-i" config.ssh.privateKeyFile
+            "-o" "IdentitiesOnly=yes"
+          ];
         destination = "${if config.user == null then "root" else config.user}@${config.host}";
       };
     };
