@@ -14,15 +14,14 @@
 Try out the [example](./example/example.nix):
 
 ```bash
-export NIX_PATH="${NIX_PATH}:tf=$PWD"
 export TF_VAR_do_token=XXX
-nix run tf.run.apply --arg config ./example/digitalocean.nix
+nix run -f. run.apply --arg config ./example/digitalocean.nix
 
 # Now log into the server that was just deployed:
-nix run tf.run.system-ssh --arg config ./example/digitalocean.nix
+nix run -f. run.system-ssh --arg config ./example/digitalocean.nix
 
 # To undo the above:
-nix run tf.run.terraform --arg config ./example/digitalocean.nix -c terraform destroy
+nix shell -f run.terraform --arg config ./example/digitalocean.nix -c terraform destroy
 ```
 
 ## See Also
