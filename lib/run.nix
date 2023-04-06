@@ -46,7 +46,7 @@
       exec @binName@ "$@" ''${NIX_RUN_ARGS-}
     '';
   };
-  nixRunWrapper = binName: package: pkgs.stdenvNoCC.mkDerivation {
+  nixRunWrapper' = binName: package: pkgs.stdenvNoCC.mkDerivation {
     name = "nix-run-${binName}";
     preferLocalBuild = true;
     allowSubstitutes = false;
@@ -60,7 +60,16 @@
         ln -s $package/bin $out/bin
       fi
     '';
-    meta = package.meta or {};
+    meta = package.meta or {} // {
+      mainProgram = package.meta.mainProgram or binName;
+    };
     passthru = package.passthru or {};
   };
+  nixRunWrapper = binName: package: if pkgs.lib.versionOlder builtins.nixVersion "2.4.0"
+    then nixRunWrapper' binName package
+    else package // {
+      meta = package.meta or { } // {
+        mainProgram = binName;
+      };
+    };
 }
