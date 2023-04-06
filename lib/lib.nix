@@ -1,4 +1,4 @@
-{ pkgs, config, lib }: with builtins; with lib; let
+{ lib }: with builtins; with lib; let
   terraformExpr = expr: "\${${expr}}";
   terraformSelf = attr: terraformExpr "self.${attr}";
   terraformIdent = id: replaceStrings [ "." ":" "/" ] [ "_" "_" "_" ] id; # https://www.terraform.io/docs/configuration/syntax.html#identifiers
@@ -19,7 +19,7 @@
   inputDrvs = drv: inputDrvs' [] [ drv ];
 
   # marker derivation for tracking (unresolved?) terraform resource dependencies, attaching context to json, etc.
-  terraformContext = resolved: path: attr: let
+  terraformContext = pkgs: resolved: path: attr: let
     contextDrv = derivation {
       inherit (pkgs) system;
       name = "tf-${if resolved then "2" else "1"}terraformReference-${path}";
@@ -56,7 +56,7 @@
   in if context == null then [] else [ context.key ]) closure);
 
   # ugh
-  fromHclPath = p: let
+  fromHclPath = config: p: let
     path = if isString p then splitString "." p else p;
     name = last path;
     kind = head path;
@@ -104,6 +104,7 @@
   hclDir = {
     name ? "terraform"
   , hcl
+  , pkgs ? import <nixpkgs> { }
   , terraform ? pkgs.buildPackages.terraform
   , jq ? pkgs.buildPackages.jq
   , generateLockfile ? versionAtLeast terraform.version or (builtins.parseDrvName terraform.name).version "0.14"
@@ -139,7 +140,7 @@
   in setContext context str;
 
   dag = import ./dag.nix { inherit lib; };
-  run = import ./run.nix { inherit pkgs; };
+  run = import ./run.nix { inherit lib; };
 
   readState = statefile: let
     state = fromJSON (readFile statefile);
@@ -167,7 +168,7 @@ in rec {
   inherit terraformExpr terraformSelf terraformIdent;
 
   inherit (dag) dagTopoSort dagEntryAfter dagEntryBefore dagEntryAnywhere;
-  inherit (run) nixRunWrapper;
+  inherit run;
 
   genUrl = {
     protocol

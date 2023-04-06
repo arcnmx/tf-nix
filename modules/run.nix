@@ -1,5 +1,6 @@
 { config, pkgs, lib, ... }: with lib; let
-  inherit (import ../lib/run.nix { inherit (cfg) pkgs; }) nixRunWrapper;
+  runlib = import ../lib/run.nix { inherit lib; };
+  nixRunWrapper = cfg.pkgs.callPackage runlib.nixRunWrapper { };
   cfg = config.runners;
   runType = types.submodule ({ config, name, ... }: {
     options = {

@@ -1,5 +1,5 @@
-{ pkgs, runtimeShell ? pkgs.runtimeShell }: rec {
-  nixRunner = binName: pkgs.stdenvNoCC.mkDerivation {
+{ lib }: rec {
+  nixRunner = { stdenvNoCC, runtimeShell}: binName: stdenvNoCC.mkDerivation {
     preferLocalBuild = true;
     allowSubstitutes = false;
     name = "nix-run-wrapper-${binName}";
@@ -46,7 +46,7 @@
       exec @binName@ "$@" ''${NIX_RUN_ARGS-}
     '';
   };
-  nixRunWrapper' = binName: package: pkgs.stdenvNoCC.mkDerivation {
+  nixRunWrapper' = { stdenvNoCC }: binName: package: stdenvNoCC.mkDerivation {
     name = "nix-run-${binName}";
     preferLocalBuild = true;
     allowSubstitutes = false;
@@ -65,8 +65,8 @@
     };
     passthru = package.passthru or {};
   };
-  nixRunWrapper = binName: package: if pkgs.lib.versionOlder builtins.nixVersion "2.4.0"
-    then nixRunWrapper' binName package
+  nixRunWrapper = { stdenvNoCC }@args: binName: package: if lib.versionOlder builtins.nixVersion "2.4.0"
+    then nixRunWrapper' args binName package
     else package // {
       meta = package.meta or { } // {
         mainProgram = binName;

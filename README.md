@@ -16,6 +16,7 @@ Try out the [example](./example/example.nix):
 ```bash
 export TF_VAR_do_token=XXX
 nix run -f. run.apply --arg config ./example/digitalocean.nix
+# or with flakes: nix run --impure github:arcnmx/tf-nix#example.digitalocean.run.apply
 
 # Now log into the server that was just deployed:
 nix run -f. run.system-ssh --arg config ./example/digitalocean.nix

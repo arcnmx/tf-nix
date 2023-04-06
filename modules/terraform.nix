@@ -1,13 +1,10 @@
 { pkgs, config, lib, ... }: with lib; let
   tconfig = config;
   # TODO: filter out all empty/unnecessary/default keys and objects
-  tf = import ../lib/lib.nix {
-    inherit pkgs config lib;
-  } // {
-    tfTypes = {
-      inherit pathType providerReferenceType providerType resourceType outputType moduleType variableType
-        connectionType provisionerType;
-    };
+  inherit (config.lib) tf;
+  tfTypes = {
+    inherit pathType providerReferenceType providerType resourceType outputType moduleType variableType
+      connectionType provisionerType;
   };
   pathType = types.str; # types.path except that ${} expressions work too (and also sometimes relative paths?)
   providerReferenceType' = types.submodule ({ config, ... }: let
@@ -1168,7 +1165,15 @@ in {
       terraform.package = config.terraform.cli;
     };
     lib = {
-      inherit tf;
+      tf = let
+        tf = import ../lib {
+          inherit pkgs lib;
+        } // {
+          inherit tfTypes;
+        };
+      in tf // {
+        fromHclPath = tf.fromHclPath config;
+      };
     };
   };
 }
