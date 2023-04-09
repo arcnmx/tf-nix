@@ -72,4 +72,5 @@
         mainProgram = binName;
       };
     };
+  nix-run = { }: "${./nix-run.sh}";
 }

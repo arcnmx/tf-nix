@@ -187,7 +187,7 @@ in {
       apply = let
         targets = optionals (!cfg.isComplete) cfg.targets;
         # TODO: consider whether to include targets even on completion if not all resources are selected?
-        tailContinue = ''${pkgs.runtimeShell} ${config.runners.lazy.nixRun} ${escapeShellArgs config.runners.lazy.run.apply.out.runArgs} "$@"'';
+        tailContinue = ''${escapeShellArgs config.runners.lazy.run.apply.out.runArgs} "$@"'';
       in {
         package = pkgs.writeShellScriptBin "terraform-apply" (''
           set -eu

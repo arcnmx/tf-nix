@@ -1,6 +1,7 @@
 { config, pkgs, lib, ... }: with lib; let
   runlib = import ../lib/run.nix { inherit lib; };
   nixRunWrapper = cfg.pkgs.callPackage runlib.nixRunWrapper { };
+  nix-run = runlib.nix-run { };
   cfg = config.runners;
   runType = types.submodule ({ config, name, ... }: {
     options = {
@@ -69,7 +70,7 @@
     config = {
       args = mkIf (config.file != null) [ "-f" (toString config.file) ];
       out = {
-        runArgs = config.args
+        runArgs = singleton nix-run ++ config.args
           ++ [ config.attr "-c" config.executable ];
       };
       set = {
@@ -86,18 +87,6 @@ in {
         defaultText = "pkgs.buildPackages";
       };
       lazy = {
-        nixRun = mkOption {
-          type = types.path;
-          default = builtins.toFile "nix-run.sh" ''
-            if nix --experimental-features "" shell --version 2>&1 >/dev/null; then
-              exec nix --extra-experimental-features nix-command \
-                shell "$@"
-            else
-              exec nix \
-                run "$@"
-            fi
-          '';
-        };
         file = mkOption {
           type = types.nullOr types.path;
           default = null;
@@ -138,7 +127,7 @@ in {
         inherit (cfg.lazy) args;
       })) cfg.run;
       nativeBuildInputs = mapAttrsToList (k: v: cfg.pkgs.writeShellScriptBin v.name ''
-        exec ${cfg.pkgs.runtimeShell} ${cfg.lazy.nixRun} ${escapeShellArgs v.out.runArgs} "$@"
+        exec ${escapeShellArgs v.out.runArgs} "$@"
       '') cfg.lazy.run;
     };
     run = mapAttrs (_: r: r.runner) cfg.run;
