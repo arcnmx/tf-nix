@@ -150,9 +150,17 @@
   };
 
   # applies data from `builtins.getContext` back to a string.
-  setContext = context: str: let
-    str' = builtins.unsafeDiscardStringContext str;
-  in foldl (str: cx: addContextFrom "${import cx}" str) str' (attrNames context); # TODO: preserve context outputs
+  setContext = let
+    appendContext' = str: context: let
+      contextToString = key: cx: let
+        drv = import key;
+      in if cx.path or false == true then "${/. + key}"
+        else if cx ? outputs then concatMapStrings (flip getAttr drv) cx.outputs
+        else throw "unknown context type for ${key}: ${toString (attrNames cx)}";
+      context' = mapAttrsToList contextToString context;
+    in foldl (flip addContextFrom) str context';
+    appendContext = builtins.appendContext or appendContext';
+  in context: str: appendContext (builtins.unsafeDiscardStringContext str) context;
 
   # attrsFromPath [ "a" "b" "c" ] x = { a.b.c = x }
   attrsFromPath = path: value: foldr (key: attrs: { ${key} = attrs; }) value path;
