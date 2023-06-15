@@ -1136,7 +1136,7 @@ in {
         query = mapAttrs' (_: var: nameValuePair var.name var.ref) vars;
       };
     };
-    hcl = {
+    hcl = tf.scrubHcl {
       resource = let
         resources' = filter (r: !r.dataSource && r.enable) (attrValues config.resources);
         resources = groupBy (r: r.out.resourceKey) resources';
@@ -1150,7 +1150,7 @@ in {
         providers = filter (p: p.hcl != { }) providers';
       in mkIf (providers != [ ]) (map (p: { ${p.type} = p.hcl; }) providers);
       output = mkIf (config.outputs != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.outputs);
-      variables = mkIf (config.variables != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.variables);
+      variable = mkIf (config.variables != { }) (mapAttrs' (_: o: nameValuePair o.name o.hcl) config.variables);
       terraform = let
         providers = config.terraform.requiredProviders;
         v0_13 = mapAttrs' (_: p: nameValuePair p.type p.hcl) providers;
