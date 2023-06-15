@@ -54,6 +54,9 @@
 in {
   options.deps = {
     enable = mkEnableOption "terraform/nix DAG";
+    continue.enable = mkEnableOption "partial targeted apply" // {
+      default = true;
+    };
 
     select = {
       hclPaths = mkOption {
@@ -124,9 +127,12 @@ in {
       name = hcl.out.reference;
       filteredNames = config.continue.input.populatedTargets;
       filtered = config.continue.present && (filteredNames == null || elem hcl.out.reference filteredNames);
-    in e.type == "tf" && (hcl.kind == "variable" || hcl.kind == "provider" || filtered);
+      isDone = hcl.kind == "variable" || hcl.kind == "provider" || filtered;
+    in e.type == "tf" && (!cfg.continue.enable || isDone);
     done' = partition filterDone cfg.sorted;
-    done = done'.right;
+    done = if cfg.continue.enable
+      then done'.right
+      else filter filterDone cfg.sorted;
     remaining = done'.wrong;
     # 2. if sorted starts with drv entries, remove all until the first tf
     remaining' = (foldl (sum: e: if e.type == "drv" && !sum.fused
@@ -138,10 +144,16 @@ in {
       then { rest = [ ]; tfs = sum.tfs ++ [ e ]; }
       else { rest = sum.rest ++ [ e ]; tfs = sum.tfs; }
     ) { tfs = [ ]; rest = [ ]; } remaining';
-    tfTargets = remaining''.tfs;
-    tfIncomplete = filter (e: e.type == "tf") remaining''.rest;
+    tfTargets = if cfg.continue.enable
+      then remaining''.tfs
+      else [ ];
+    tfIncomplete = if cfg.continue.enable
+      then filter (e: e.type == "tf") remaining''.rest
+      else [ ];
     # 4. if there are no drvs at the end, you're done. (no need to specify TF_TARGETS or continue)
-    isComplete = remaining''.rest == [ ];
+    isComplete = if cfg.continue.enable
+      then remaining''.rest == [ ]
+      else true;
     # 5. if there are drvs at the end (and no more tfs), something is messed up?
     broken = !isComplete && all (e: e.type == "drv") remaining''.rest;
 
@@ -187,21 +199,30 @@ in {
       apply = let
         targets = optionals (!cfg.isComplete) cfg.targets;
         # TODO: consider whether to include targets even on completion if not all resources are selected?
-        tailContinue = ''${escapeShellArgs config.runners.lazy.run.apply.out.runArgs} "$@"'';
+        applyHeader = optionalString cfg.continue.enable ''
+          export ${config.continue.envVar}='${toJSON config.continue.output.json}'
+        '';
+        applyInit = optionalString (!cfg.continue.enable || !config.continue.present) cfg.apply.initCommand;
+        applyTargets = optionalString (cfg.continue.enable && config.continue.present) ''
+          export TF_TARGETS="${concatStringsSep " " targets}"
+        '';
+        applyFooter = if cfg.continue.enable && (!config.continue.present || !cfg.isComplete)
+          then ''exec ${escapeShellArgs config.runners.lazy.run.apply.out.runArgs} "$@"''
+          else cfg.apply.doneCommand;
       in {
-        package = pkgs.writeShellScriptBin "terraform-apply" (''
+        package = pkgs.writeShellScriptBin "terraform-apply" ''
           set -eu
 
-          export ${config.continue.envVar}='${toJSON config.continue.output.json}'
-        '' + optionalString (!config.continue.present) cfg.apply.initCommand
-        + "\n" + optionalString (config.continue.present) ''
-          export TF_TARGETS="${concatStringsSep " " targets}"
+          ${applyHeader}
+          ${applyInit}
+          ${applyTargets}
           ${config.terraform.cli}/bin/terraform apply "$@"
-        '' + (if !config.continue.present || !cfg.isComplete then tailContinue else cfg.apply.doneCommand));
+          ${applyFooter}
+        '';
         initCommand = "${config.terraform.cli}/bin/terraform init";
       };
     };
-    continue.output.populatedTargets = mkIf cfg.enable (
+    continue.output.populatedTargets = mkIf (cfg.enable && cfg.continue.enable) (
       if config.continue.present then map targetMap targets else [ ]
     );
     terraform = {
