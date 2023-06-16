@@ -25,7 +25,7 @@
       name = "tf-${if resolved then "2" else "1"}terraformReference-${path}";
       builder = if resolved
         then "${pkgs.coreutils}/bin/touch"
-        else "unresolved terraform reference";
+        else "unresolved terraform reference: ${path}" + optionalString (attr != null) ".${attr}";
       args = optionals resolved [ (placeholder "out") ];
       #__terraformPath = path;
     };
