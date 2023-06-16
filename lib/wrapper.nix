@@ -12,7 +12,7 @@
   TF_COMMAND=''${1-}
   if [[ -n ''${TF_CONFIG_DIR-} ]]; then
     case $TF_COMMAND in
-      init|plan|apply|destroy|providers|graph|refresh|show)
+      init|plan|apply|destroy|providers|graph|refresh|show|console)
         ${if versionAtLeast version "0.14" then ''
           set -- -chdir="$TF_CONFIG_DIR" "$@"
         '' else ''
@@ -38,7 +38,7 @@
   if [[ -n ''${TF_STATE_FILE-} ]]; then
     ${concatMapStringsSep "\n" (k:
       "export TF_CLI_ARGS_${k}=\"\${TF_CLI_ARGS_${k}-} -state=$TF_STATE_FILE\""
-    ) ([ "plan" "apply" "output" "destroy" "refresh" "taint" "import" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" "replace_provider" ])}
+    ) ([ "plan" "apply" "output" "destroy" "refresh" "taint" "import" "console" ] ++ map (a: "state_${a}") [ "list" "rm" "mv" "push" "pull" "show" "replace_provider" ])}
     if [[ $TF_COMMAND = show ]]; then
       set -- "$@" "$TF_STATE_FILE"
     fi

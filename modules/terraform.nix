@@ -1089,13 +1089,62 @@ in {
         )
       );
       cli = let
-        vars = config.terraform.environment;
+        wrapEnv = name: environment: let
+          vars = if isAttrs environment
+            then attrList environment
+            else environment;
+          exportable = partition ({ name, ... }: isExportable name) vars;
+          export = optionalString (exportable.right != [ ])
+            "export ${concatMapStringsSep " " mapExport exportable.right}";
+          env = optionalString (exportable.wrong != [ ])
+            "env ${concatMapStringsSep " " mapEnv exportable.wrong} \\\n  ";
+          script = pkgs.writeShellScriptBin name ''
+            set -eu
+            ${concatMapStringsSep "\n" mapVar vars}
+            ${export}
+            exec ${env}"$@"
+          '';
+        in optionalString (vars != [ ]) "${script}/bin/${name}";
+        vars = partition isVar (attrList config.terraform.environment);
+        run = wrapEnv "tf-env" vars.wrong;
+        run-vars = wrapEnv "tf-env-vars" vars.right;
+        attrList = mapAttrsToList nameValuePair;
+        isVar = { name, ... }: hasPrefix "TF_VAR_" name;
+        isExportable = name: ! hasInfix "-" name;
+        sanitize = replaceStrings [ "-" ] [ "__" ];
+        mapVar = { name, value }: ''${sanitize name}="${value}"'';
+        mapExport = getAttr "name";
+        mapEnv = { name, ... }: ''"${name}=''$${sanitize name}"'';
+        terraform = "${config.terraform.package}/bin/terraform";
       in pkgs.writeShellScriptBin "terraform" ''
         set -eu
-        exec env ${concatStringsSep " " (mapAttrsToList (k: v:
-        ''"${k}=${v}"''
-        ) vars)} \
-        ${config.terraform.package}/bin/terraform "$@"
+
+        terraform() {
+          exec ${run} ${terraform} "$@"
+        }
+
+        terraform-vars() {
+          exec ${run} ${run-vars} ${terraform} "$@"
+        }
+
+        case "''${1-}" in
+          state)
+            case "''${2-}" in
+              push|pull)
+                terraform-vars "$@"
+              ;;
+              *)
+                terraform "$@"
+              ;;
+            esac
+            ;;
+          init|get|validate|fmt|graph|output|show|taint|workspace|providers|version|force-unlock)
+            terraform "$@"
+            ;;
+          *)
+            terraform-vars "$@"
+            ;;
+        esac
       '';
       environment =
         mapAttrs' (_: var:
