@@ -312,7 +312,7 @@ in {
         command = let
           ssh = tf.outputs."${system.out.resourceName}_ssh".import;
         in ''
-          exec ${pkgs.openssh}/bin/ssh ${escapeShellArgs ssh.cliArgs} ${escapeShellArg ssh.destination} "$@"
+          exec ${config.runners.pkgs.openssh}/bin/ssh ${escapeShellArgs ssh.cliArgs} ${escapeShellArg ssh.destination} "$@"
         '';
       };
     }) cfg.systems);
