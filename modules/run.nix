@@ -42,6 +42,10 @@
         type = types.str;
         default = name;
       };
+      scriptHeader = mkOption {
+        type = types.nullOr types.lines;
+        default = null;
+      };
       executable = mkOption {
         type = types.str;
         default = name;
@@ -126,9 +130,13 @@ in {
       } // {
         inherit (cfg.lazy) args;
       })) cfg.run;
-      nativeBuildInputs = mapAttrsToList (k: v: cfg.pkgs.writeShellScriptBin v.name ''
-        exec ${escapeShellArgs v.out.runArgs} "$@"
-      '') cfg.lazy.run;
+      nativeBuildInputs = mapAttrsToList (k: v: let
+        exec = ''
+          exec ${escapeShellArgs v.out.runArgs} "$@"
+        '';
+        cmd = optionalString (v.scriptHeader != null) "${v.scriptHeader}"
+          + exec;
+      in cfg.pkgs.writeShellScriptBin v.name cmd) cfg.lazy.run;
     };
     run = mapAttrs (_: r: r.runner) cfg.run;
   };
