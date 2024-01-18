@@ -13,14 +13,14 @@
   if [[ -n ''${TF_CONFIG_DIR-} ]]; then
     case $TF_COMMAND in
       init|plan|apply|destroy|providers|graph|refresh|show|console)
-        ${if versionAtLeast version "0.14" then ''
+        ${if versionAtLeast terraformVersion "0.14" then ''
           set -- -chdir="$TF_CONFIG_DIR" "$@"
         '' else ''
           set -- "$@" "$TF_CONFIG_DIR"
         ''}
         ;;
-      import)
-        ${optionalString (versionAtLeast version "0.14") ''
+      import|state)
+        ${optionalString (versionAtLeast terraformVersion "0.14") ''
           set -- -chdir="$TF_CONFIG_DIR" "$@"
         ''}
         ;;
