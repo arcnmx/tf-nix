@@ -288,10 +288,13 @@
               inherit (config.out) type;
               name = config.out.domain;
             } // (if config.out.type == "SRV" then {
+              name = concatStringsSep "." ([
+                "_${config.srv.service}"
+                "_${config.srv.proto}"
+              ] ++ optional (config.domain != null) config.domain
+              #++ [ config.out.fqdn ]
+              );
               data = {
-                service = "_${config.srv.service}";
-                proto = "_${config.srv.proto}";
-                name = config.out.fqdn;
                 inherit (config.srv) priority weight port target;
               };
             } else if config.out.type == "A" then {
