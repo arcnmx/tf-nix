@@ -204,6 +204,31 @@
         }));
         default = null;
       };
+      uri = mkOption {
+        type = types.nullOr (types.submodule ({ config, ... }: {
+          options = {
+            service = mkOption {
+              type = types.str;
+            };
+            proto = mkOption {
+              type = types.nullOr types.str;
+              default = "tcp";
+            };
+            priority = mkOption {
+              type = types.int;
+              default = 0;
+            };
+            weight = mkOption {
+              type = types.int;
+              default = 5;
+            };
+            target = mkOption {
+              type = types.str;
+            };
+          };
+        }));
+        default = null;
+      };
       out = {
         type = mkOption {
           type = types.str;
@@ -260,6 +285,7 @@
         type = let
           types = filter (t: t != null) [
             (mapNullable (_: "SRV") config.srv)
+            (mapNullable (_: "URI") config.uri)
             (mapNullable (_: "A") config.a)
             (mapNullable (_: "AAAA") config.aaaa)
             (mapNullable (_: "CNAME") config.cname)
@@ -296,6 +322,13 @@
               );
               data = {
                 inherit (config.srv) priority weight port target;
+              };
+            } else if config.out.type == "URI" then {
+              data = {
+                service = "_${config.uri.service}";
+                ${mapNullable (_: "proto") config.uri.proto} = "_${config.uri.proto}";
+                name = config.out.fqdn;
+                inherit (config.uri) priority weight target;
               };
             } else if config.out.type == "A" then {
               value = config.a.address;
