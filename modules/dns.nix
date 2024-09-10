@@ -331,16 +331,16 @@
                 inherit (config.uri) priority weight target;
               };
             } else if config.out.type == "A" then {
-              value = config.a.address;
+              content = config.a.address;
             } else if config.out.type == "AAAA" then {
-              value = config.aaaa.address;
+              content = config.aaaa.address;
             } else if config.out.type == "CNAME" then {
-              value = config.cname.target;
+              content = config.cname.target;
             } else if config.out.type == "MX" then {
               inherit (config.mx) priority;
-              value = config.mx.target;
+              content = config.mx.target;
             } else if config.out.type == "TXT" then {
-              inherit (config.txt) value;
+              content = config.txt.value;
             } else throw "unknown DNS record ${config.out.type}");
           };
           dns = let
