@@ -304,7 +304,10 @@
         set = {
           cloudflare = {
             provider = config.out.zone.provider.set;
-            type = "record";
+            type = let
+              cf-provider-version = cfg.terraform.requiredProviders.cloudflare.version or "4.0";
+              cfnew = versionAtLeast cf-provider-version "5.0";
+            in if cfnew then "dns_record" else "record";
             inputs = {
               zone_id = if config.out.zone.cloudflare.id != null
                 then config.out.zone.cloudflare.id
@@ -313,6 +316,7 @@
                 else config.out.zone.out.resource.refAttr "id";
               inherit (config.out) type;
               name = config.out.domain;
+              ttl = if config.ttl == 3600 then 1 else config.ttl;
             } // (if config.out.type == "SRV" then {
               name = concatStringsSep "." ([
                 "_${config.srv.service}"
