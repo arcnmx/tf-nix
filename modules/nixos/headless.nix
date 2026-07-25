@@ -1,7 +1,7 @@
 { lib, ... }: with lib; {
   config = {
     boot = {
-      vesa = mkDefault false;
+      ${if lib.versionOlder lib.version "26.05" then "vesa" else null} = mkDefault false;
     };
 
     systemd.services."getty@tty1".enable = mkDefault false;
